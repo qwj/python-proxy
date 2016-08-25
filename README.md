@@ -74,7 +74,7 @@ To bridge two servers, add cipher key to ensure data can't be intercepted. First
     
 Next, run pproxy.py remotely on server "aa.bb.cc.dd"
 
-    python3.6 pproxy.py -p 12345 -t psocks -rc "This is a cipher key"
+    python3.6 pproxy.py -p 12345 -t psocks -c "This is a cipher key"
     
 By doing this, the traffic between local and aa.bb.cc.dd is encrypted by stream cipher Chacha20 with key "This is a cipher key". If target hostname is not in "rules", traffic will go through locally. Otherwise, traffic will go through the remote server by encryption.
 
