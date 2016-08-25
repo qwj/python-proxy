@@ -2,7 +2,7 @@ import socket, struct, argparse, urllib.parse, time, re, sys, pickle, asyncio, f
 
 CLIENT_TIMEOUT = 10
 CONNECTION_TIMEOUT = 90
-AUTH_TIME = 86400*7
+AUTH_TIME = 86400 * 30
 HTTP_LINE = re.compile('([^ ]+) +(.+?) +([^ ]+)')
 
 def all_stat(stats):
@@ -75,7 +75,14 @@ async def http_channel(reader, writer, stat_bytes):
     finally:
         writer.close()
 
-async def proxy_handler(reader, writer, types, auth, rserver, rtype, rauth, match, block, verbose, stats, auth_tables, **kwargs):
+async def apply_cipher(reader, writer, cipher, read):
+    writer_cipher = cipher[0].new(key=cipher[1])
+    writer.write(writer_cipher.nonce)
+    writer.write = lambda s, o=writer.write, p=writer_cipher.encrypt: o(p(s))
+    reader_cipher = cipher[0].new(key=cipher[1], nonce=await read(8))
+    reader.feed_data = lambda s, o=reader.feed_data, p=reader_cipher.decrypt: o(p(s))
+
+async def proxy_handler(reader, writer, types, auth, rserver, rtype, rauth, match, block, verbose, stats, auth_tables, cipher, rcipher, **kwargs):
     try:
         initbuf = b''
         pack2 = lambda s: struct.pack('>H', s)
@@ -84,6 +91,8 @@ async def proxy_handler(reader, writer, types, auth, rserver, rtype, rauth, matc
         read = lambda n: asyncio.wait_for(reader.readexactly(n), timeout=CLIENT_TIMEOUT)
         writer.get_extra_info('socket').setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         remote_ip = writer.get_extra_info('peername')[0]
+        if cipher:
+            await apply_cipher(reader, writer, cipher, read)
         header = await read(1)
         if 'socks' in types and header == b'\x05':
             methods = await read((await read(1))[0])
@@ -151,7 +160,7 @@ async def proxy_handler(reader, writer, types, auth, rserver, rtype, rauth, matc
             raise Exception('Unsupported protocol')
         if block and block(host_name):
             raise Exception('BLOCKED ' + host_name)
-        host_name_2 = '.'.join(host_name.split('.')[-2:]) if host_name.split('.')[-1].isalpha() else host_name
+        host_name_2 = '.'.join(host_name.split('.')[-3 if host_name.endswith('.com.cn') else -2:]) if host_name.split('.')[-1].isalpha() else host_name
         tostat = (stats[0], stats.setdefault(remote_ip, {}).setdefault(host_name_2, [0]*6))
         modstat = lambda i: lambda s: [st.__setitem__(i, st[i] + s) for st in tostat]
         viaproxy = bool(rserver and (not match or match(host_name)))
@@ -175,10 +184,12 @@ async def proxy_handler(reader, writer, types, auth, rserver, rtype, rauth, matc
             raise Exception(f'Connection timeout {rserver}')
         try:
             writer_remote.get_extra_info('socket').setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            readr = lambda n: asyncio.wait_for(reader_remote.readexactly(n), timeout=CLIENT_TIMEOUT)
+            if viaproxy and rcipher:
+                await apply_cipher(reader_remote, writer_remote, rcipher, readr)
             writer_remote.write(initbuf)
             if viaproxy and rtype == 'socks':
                 await asyncio.wait_for(reader_remote.readuntil(b'\x00\x05\x00\x00'), timeout=CLIENT_TIMEOUT)
-                readr = lambda n: asyncio.wait_for(reader_remote.readexactly(n), timeout=CLIENT_TIMEOUT)
                 await readr(6 if (await readr(1))[0] == 1 else (await readr(1))[0] + 2)
             elif viaproxy and rtype == 'http':
                 await asyncio.wait_for(reader_remote.readuntil(b'\r\n\r\n'), timeout=CLIENT_TIMEOUT)
@@ -200,13 +211,18 @@ def main():
     def addr_compile(s):
         ip, _, port = s.partition(':')
         return (ip, int(port) if port else 18436)
+    def cipher_compile(key): #pip install pycryptodome
+        from Crypto.Cipher import ChaCha20
+        return (ChaCha20, key.encode().rjust(32, b'\x55'))
     parser = argparse.ArgumentParser(description='Proxy server that can tunnel by http,socks,psocks protocol.')
     parser.add_argument('-p', dest='port', type=int, default=8080, help='listen port server bound to (default: 8080)')
     parser.add_argument('-t', dest='types', type=lambda s: s.split(','), default=['socks','http'], help='proxy server protocols (default: socks,http)')
     parser.add_argument('-a', dest='auth', type=lambda s: s.encode(), help='authentication requirement')
+    parser.add_argument('-c', dest='cipher', type=cipher_compile, help='cipher key (default: no cipher)')
     parser.add_argument('-rs', dest='rserver', type=addr_compile, help='remote server address (default: direct)')
     parser.add_argument('-rt', dest='rtype', default='psocks', help='remote server type (default: psocks)')
     parser.add_argument('-ra', dest='rauth', default=b'', type=lambda s: s.encode(), help='remote authorization code')
+    parser.add_argument('-rc', dest='rcipher', type=cipher_compile, help='remote cipher key (default: no cipher)')
     parser.add_argument('-m', dest='match', type=pattern_compile, help='match pattern file')
     parser.add_argument('-b', dest='block', type=pattern_compile, help='block pattern file')
     parser.add_argument('-v', dest='v', action='store_true', help='print verbose output')
