@@ -53,23 +53,23 @@ Uri Syntax
 {scheme}://[{cipher}@]{netloc}[?{rules}][#{auth}]
 
 - scheme
-    Currently supported scheme: http, socks, ss, ssl, secure. You can use + to add multiple protocols together.
-        http - http protocol
-        socks - socks5 protocol
-        ss - shadowsocks protocol
-        ssl - communicate in (unsecured) ssl
-        secure - comnunicate in (secured) ssl
-    Valid schemes are: http://, http+socks://, http+ssl://, ss+secure://
-    Invalid schemes are: ssl://, secure://
+    - Currently supported scheme: http, socks, ss, ssl, secure. You can use + to add multiple protocols together.
+        - http - http protocol
+        - socks - socks5 protocol
+        - ss - shadowsocks protocol
+        - ssl - communicate in (unsecured) ssl
+        - secure - comnunicate in (secured) ssl
+    - Valid schemes are: http://, http+socks://, http+ssl://, ss+secure://
+    - Invalid schemes are: ssl://, secure://
 - cipher
-    Cipher is consisted by cipher name, colon ':' and cipher key.
-    Full cipher list:  table, rc4, rc4-md5, chacha20, salsa20, aes-128-cfb, aes-192-cfb, aes-256-cfb, bf-cfb, cast5-fb, des-cfb
+    - Cipher is consisted by cipher name, colon ':' and cipher key.
+    - Full cipher list:  table, rc4, rc4-md5, chacha20, salsa20, aes-128-cfb, aes-192-cfb, aes-256-cfb, bf-cfb, cast5-fb, des-cfb
 - netloc
-    It can be "hostname:port" or "/unix_path". If the hostname is empty, server will listen on all interfaces.
+    - It can be "hostname:port" or "/unix_path". If the hostname is empty, server will listen on all interfaces.
 - rules
-    The filename that contains regex rules
+    - The filename that contains regex rules
 - auth
-    The username, colon ':', and the password
+    - The username, colon ':', and the password
 
 Examples
 -----------
