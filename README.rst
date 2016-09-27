@@ -8,6 +8,11 @@ Python 3.6
 
 *Python 3.5* added new syntax *async def* and *await* to make asyncio programming easier. *Python 3.6* added new syntax *formatted string literals*. This utility is to demonstrate these new syntax and is also fully ready for production usage.
 
+Installation
+-----------
+
+    $ sudo pip3 install pproxy
+
 Features
 -----------
 
@@ -25,8 +30,7 @@ Usage
 -----------
 
     $ pproxy -h
-    usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-b BLOCK] [-v]
-                  [--ssl SSLFILE] [--pac PAC] [--version]
+    usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-b BLOCK] [-v] [--ssl SSLFILE] [--pac PAC] [--version]
     
     Proxy server that can tunnel among remote servers by regex rules. Supported
     protocols: http,socks,shadowsocks
@@ -50,11 +54,11 @@ Uri Syntax
 
 - scheme
     Currently supported scheme: http, socks, ss, ssl, secure. You can use + to add multiple protocols together.
-    http - http protocol
-    socks - socks5 protocol
-    ss - shadowsocks protocol
-    ssl - communicate in (unsecured) ssl
-    secure - comnunicate in (secured) ssl
+        http - http protocol
+        socks - socks5 protocol
+        ss - shadowsocks protocol
+        ssl - communicate in (unsecured) ssl
+        secure - comnunicate in (secured) ssl
     Valid schemes are: http://, http+socks://, http+ssl://, ss+secure://
     Invalid schemes are: ssl://, secure://
 - cipher
