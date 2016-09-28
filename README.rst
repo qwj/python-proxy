@@ -15,14 +15,16 @@ Features
 - Regex pattern file support to route/block by hostname matching.
 - SSL connection support to prevent Man-In-The-Middle attack.
 - Many ciphers support to keep communication securely. (chacha20, aes-256-cfb, etc)
-- Shadowsocks OTA (One-Time-Auth) experimental feature support.
+- Shadowsocks OTA (One-Time-Auth_) experimental feature support.
 - Basic statistics for bandwidth and total traffic by client/hostname.
 - PAC support for automatically javascript configuration.
+
+.. _One-Time-Auth: https://shadowsocks.org/en/spec/one-time-auth.html
 
 Python 3.6
 -----------
 
-*Python 3.5* added new syntax *async def* and *await* to make asyncio programming easier. *Python 3.6* added new syntax *formatted string literals*. This tool is to demonstrate these new syntax so the minimal Python requirement is *Python 3.6*. It has many features, and is also fully ready for production usage.
+*Python 3.5* added new syntax **async def** and **await** to make asyncio programming easier. *Python 3.6* added new syntax **formatted string literals**. This tool is to demonstrate these new syntax, so the minimal Python requirement is **3.6**. It has many features, and is also fully ready for production usage.
 
 Installation
 -----------
@@ -32,7 +34,9 @@ Installation
 Requirement
 -----------
 
-*pycryptodome* is the optional required library to enable cipher encryption support. Without installing this, you can still use pproxy with no encryption.
+*pycryptodome_* is the optional required library to enable cipher encryption support. Without installing this, you can still use pproxy with no encryption.
+
+.. _pycryptodome: https://pycryptodome.readthedocs.io/en/latest/src/introduction.html
 
 Usage
 -----------
@@ -155,7 +159,7 @@ A more complex example:
 
     $ pproxy -i ss://salsa20!:complex_cipher_key@/tmp/pproxy_socket -r http+ssl://domain1.com:443#username:password
 
-It listen on the unix domain socket /tmp/pproxy_socket, and use cipher name salsa20, cipher key "complex_cipher_key", and enable explicit OTA encryption for shadowsocks protocol. The traffic is tunneled to remote https proxy with simple authentication. If OTA mode is not specified, server will allow both non-OTA and OTA traffic. If specified OTA mode, server only allow OTA client to connect. More about shadowsocks OTA: https://shadowsocks.org/en/spec/one-time-auth.html
+It listen on the unix domain socket /tmp/pproxy_socket, and use cipher name salsa20, cipher key "complex_cipher_key", and enable explicit OTA encryption for shadowsocks protocol. The traffic is tunneled to remote https proxy with simple authentication. If OTA mode is not specified, server will allow both non-OTA and OTA traffic. If specified OTA mode, server only allow OTA client to connect.
 
 If you want to listen in SSL, you must specify ssl certificate and private key files by parameter "--ssl", there is an example:
 
