@@ -2,7 +2,7 @@ import argparse, time, re, pickle, asyncio, functools, types, os, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "0.9.3"
+__version__ = "0.9.4"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
@@ -59,7 +59,6 @@ async def proxy_handler(reader, writer, protos, auth, rserver, block, auth_table
             verbose(f'{str(ex) or "Unsupported protocol"} from {remote_ip}')
         try: writer.close()
         except Exception: pass
-        raise
 
 def pattern_compile(file_name):
     with open(file_name) as f:
