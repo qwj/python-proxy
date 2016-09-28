@@ -7,7 +7,7 @@ Features
 -----------
 
 - Single-thread asynchronous IO with high availability and scalability.
-- Compact (~500 lines) and powerful by leveraging python builtin *asyncio* library.
+- Lightweight (~500 lines) and powerful by leveraging python builtin *asyncio* library.
 - Automatically detect incoming traffic: HTTP/Socks/Shadowsocks.
 - Specify multiple remote servers for outcoming traffic: HTTP/Socks/Shadowsocks.
 - Unix domain socket support for communicating locally.
