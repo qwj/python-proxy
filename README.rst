@@ -14,7 +14,7 @@ Features
 - Basic authentication support for all three protocols.
 - Regex pattern file support to route/block by hostname matching.
 - SSL connection support to prevent Man-In-The-Middle attack.
-- Many ciphers support to keep communication securely. (chacha20, aes-256-cfb, etc)
+- Encryption cipher support to keep communication secure. (chacha20, aes-256-cfb, etc)
 - Shadowsocks OTA (One-Time-Auth_) experimental feature support.
 - Basic statistics for bandwidth and total traffic by client/hostname.
 - PAC support for automatically javascript configuration.
