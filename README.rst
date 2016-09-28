@@ -63,11 +63,11 @@ URI Syntax
 - scheme
     - Currently supported scheme: http, socks, ss, ssl, secure. You can use + to link multiple protocols together.
 
-        :http http protocol
-        :socks socks5 protocol
-        :ss shadowsocks protocol
-        :ssl communicate in (unsecured) ssl
-        :secure comnunicate in (secured) ssl
+        :http: http protocol
+        :socks: socks5 protocol
+        :ss: shadowsocks protocol
+        :ssl: communicate in (unsecured) ssl
+        :secure: comnunicate in (secured) ssl
 
     - Valid schemes: http://, http+socks://, http+ssl://, ss+secure://, http+socks+ss://
     - Invalid schemes: ssl://, secure://
