@@ -32,7 +32,7 @@ Installation
 Requirement
 -----------
 
-    *pycryptodome* is the optional required library to enable cipher encryption support. Without installing this, you can still use pproxy with no encryption.
+*pycryptodome* is the optional required library to enable cipher encryption support. Without installing this, you can still use pproxy with no encryption.
 
 Usage
 -----------
