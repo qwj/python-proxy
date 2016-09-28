@@ -24,7 +24,7 @@ Features
 Python 3.6
 -----------
 
-*Python 3.5* added new syntax **async def** and **await** to make asyncio programming easier. *Python 3.6* added new syntax **formatted string literals**. This tool is to demonstrate these new syntax, so the minimal Python requirement is **3.6**. It has many features, and is also fully ready for production usage.
+*Python 3.5* added new syntax **async def** and **await** to make asyncio programming easier. *Python 3.6* added new syntax **formatted string literals**. This tool is to demonstrate these new syntax, so the minimal Python requirement is **3.6**. With new syntax, it is easy to implement so many features in a short number of lines, and is also fully ready for production usage.
 
 Installation
 -----------
@@ -34,7 +34,7 @@ Installation
 Requirement
 -----------
 
-*pycryptodome_* is the optional required library to enable cipher encryption support. Without installing this, you can still use pproxy with no encryption.
+pycryptodome_ is the optional required library to enable cipher encryption support. Without installing this, you can still use pproxy with no encryption.
 
 .. _pycryptodome: https://pycryptodome.readthedocs.io/en/latest/src/introduction.html
 
