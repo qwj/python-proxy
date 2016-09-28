@@ -1,30 +1,38 @@
 python-proxy
 ===========
 
-HTTP/Socks5/Shadowsocks Asynchronous Tunnel Proxy implemented in Python 3.6 asyncio.
-
-Python 3.6
------------
-
-*Python 3.5* added new syntax *async def* and *await* to make asyncio programming easier. *Python 3.6* added new syntax *formatted string literals*. This utility is to demonstrate these new syntax and is also fully ready for production usage.
-
-Installation
------------
-
-    $ sudo pip3 install pproxy
+HTTP/Socks5/Shadowsocks asynchronous tunnel proxy implemented in Python 3.6 asyncio.
 
 Features
 -----------
 
-- Automatically detect incoming protocol: HTTP/Socks5/Shadowsocks.
-- Specify remote servers for outcoming protocol.
-- Unix path support for communicating locally.
-- Basic authentication method for HTTP/Socks5/Shadowsocks.
-- Regex pattern file support for redirecting/blocking by hostname.
+- Single-thread asynchronous IO with high availability and scalability.
+- Compact (~500 lines) and powerful by leveraging python builtin *asyncio* library.
+- Automatically detect incoming traffic: HTTP/Socks5/Shadowsocks.
+- Specify multiple remote servers for outcoming traffic: HTTP/Socks5/Shadowsocks.
+- Unix domain socket support for communicating locally.
+- Basic authentication support for all three protocols.
+- Regex pattern file support to route/block by hostname matching.
 - SSL connection support to prevent Man-In-The-Middle attack.
-- Many ciphers support to keep communication securely. (chacha20, salsa20, aes-256-cfb, etc)
+- Many ciphers support to keep communication securely. (chacha20, aes-256-cfb, etc)
+- Shadowsocks OTA (One-Time-Auth) experimental feature support.
 - Basic statistics for bandwidth and total traffic by client/hostname.
 - PAC support for automatically javascript configuration.
+
+Python 3.6
+-----------
+
+*Python 3.5* added new syntax *async def* and *await* to make asyncio programming easier. *Python 3.6* added new syntax *formatted string literals*. This tool is to demonstrate how compact these new syntax can be. It includes many features, and is also fully ready for production usage.
+
+Installation
+-----------
+
+    $ pip3 install pproxy
+
+Requirement
+-----------
+
+    *pycryptodome* is the optional required library to enable cipher encryption support. Without installing this, you can still use pproxy with no encryption.
 
 Usage
 -----------
@@ -53,19 +61,46 @@ Uri Syntax
 {scheme}://[{cipher}@]{netloc}[?{rules}][#{auth}]
 
 - scheme
-    - Currently supported scheme: http, socks, ss, ssl, secure. You can use + to add multiple protocols together.
-        - http - http protocol
-        - socks - socks5 protocol
-        - ss - shadowsocks protocol
-        - ssl - communicate in (unsecured) ssl
-        - secure - comnunicate in (secured) ssl
-    - Valid schemes are: http://, http+socks://, http+ssl://, ss+secure://
-    - Invalid schemes are: ssl://, secure://
+    - Currently supported scheme: http, socks, ss, ssl, secure. You can use + to link multiple protocols together.
+        :http: http protocol
+        :socks: socks5 protocol
+        :ss: shadowsocks protocol
+        :ssl: communicate in (unsecured) ssl
+        :secure: comnunicate in (secured) ssl
+    - Valid schemes: http://, http+socks://, http+ssl://, ss+secure://, http+socks+ss://
+    - Invalid schemes: ssl://, secure://
 - cipher
     - Cipher is consisted by cipher name, colon ':' and cipher key.
-    - Full cipher list:  table, rc4, rc4-md5, chacha20, salsa20, aes-128-cfb, aes-192-cfb, aes-256-cfb, bf-cfb, cast5-fb, des-cfb
+    - Full supported cipher list:
+        +------------+------------+-----------+-------------+
+        | Cipher     | Key Length | IV Length | Security    |
+        +============+============+===========+=============+
+        | table      | any        | 0         | 0 (lowest)  |
+        +------------+------------+-----------+-------------+
+        | rc4        | 16         | 0         | 0 (lowest)  |
+        +------------+------------+-----------+-------------+
+        | rc4-md5    | 16         | 16        | 0.5         |
+        +------------+------------+-----------+-------------+ 
+        | chacha20   | 32         | 8         | 5 (highest) |
+        +------------+------------+-----------+-------------+
+        | salsa20    | 32         | 8         | 5 (highest) |
+        +------------+------------+-----------+-------------+
+        | aes-128-cfb| 16         | 16        | 3           |
+        +------------+------------+-----------+-------------+
+        | aes-192-cfb| 24         | 16        | 3.5         |
+        +------------+------------+-----------+-------------+
+        | aes-256-cfb| 32         | 16        | 4.5         |
+        +------------+------------+-----------+-------------+
+        | bf-cfb     | 16         | 8         | 2           |
+        +------------+------------+-----------+-------------+
+        | cast5-cfb  | 16         | 8         | 2.5         |
+        +------------+------------+-----------+-------------+
+        | des-cfb    | 8          | 8         | 1           |
+        +------------+------------+-----------+-------------+
+    - To enable OTA encryption with shadowsocks, add '!' immediately after cipher name.
 - netloc
-    - It can be "hostname:port" or "/unix_path". If the hostname is empty, server will listen on all interfaces.
+    - It can be "hostname:port" or "/unix_domaon_path". If the hostname is empty, server will listen on all interfaces.
+    - Valid netloc: localhost:8080, 0.0.0.0:8123, /tmp/domain_socket, :8123
 - rules
     - The filename that contains regex rules
 - auth
@@ -76,21 +111,21 @@ Examples
 
 We can define file "rules" as follow:
 
-    #google domains
-    (?:.+\.)?google.*\.com
-    (?:.+\.)?gstatic\.com
-    (?:.+\.)?gmail\.com
-    (?:.+\.)?ntp\.org
-    (?:.+\.)?glpals\.com
-    (?:.+\.)?akamai.*\.net
-    (?:.+\.)?ggpht\.com
-    (?:.+\.)?android\.com
-    (?:.+\.)?gvt1\.com
-    (?:.+\.)?youtube.*\.com
-    (?:.+\.)?ytimg\.com
-    (?:.+\.)?goo\.gl
-    (?:.+\.)?youtu\.be
-    (?:.+\.)?google\..+
+    | #google domains
+    | (?:.+\.)?google.*\.com
+    | (?:.+\.)?gstatic\.com
+    | (?:.+\.)?gmail\.com
+    | (?:.+\.)?ntp\.org
+    | (?:.+\.)?glpals\.com
+    | (?:.+\.)?akamai.*\.net
+    | (?:.+\.)?ggpht\.com
+    | (?:.+\.)?android\.com
+    | (?:.+\.)?gvt1\.com
+    | (?:.+\.)?youtube.*\.com
+    | (?:.+\.)?ytimg\.com
+    | (?:.+\.)?goo\.gl
+    | (?:.+\.)?youtu\.be
+    | (?:.+\.)?google\..+
 
 Then start the pproxy
 
@@ -106,5 +141,12 @@ Next, run pproxy.py remotely on server "aa.bb.cc.dd"
 
     pproxy -i ss://chacha20:cipher_key@:12345
     
-By doing this, the traffic between local and aa.bb.cc.dd is encrypted by stream cipher Chacha20 with key "This is a cipher key". If target hostname is not in "rules", traffic will go through locally. Otherwise, traffic will go through the remote server by encryption.
+By doing this, the traffic between local and aa.bb.cc.dd is encrypted by stream cipher Chacha20 with key "cipher_key". If target hostname is not matched by regex file "rules", traffic will go through locally. Otherwise, traffic will go through the remote server by encryption.
+
+A more complex example:
+
+    pproxy -i ss://salsa20!:complex_cipher_key@/tmp/pproxy_socket -r http+ssl://domain1.com:443#username:password
+
+It listen on the unix domain socket /tmp/pproxy_socket, and use cipher name salsa20, cipher key "complex_cipher_key", and enable OTA encryption for shadowsocks protocol. The traffic is tunneled to remote https proxy with simple authentication.
+
 
