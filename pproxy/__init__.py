@@ -125,7 +125,7 @@ def main():
                 option.sslclient.load_cert_chain(*sslfile)
                 option.sslserver.load_cert_chain(*sslfile)
     elif any(map(lambda o: o.sslclient, args.listen)):
-        print(f'You must specify --ssl when open ssl server mode')
+        print(f'You must specify --ssl to listen in ssl mode')
         return
     loop = asyncio.get_event_loop()
     if args.v:

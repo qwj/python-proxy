@@ -2,6 +2,9 @@ import time, sys, asyncio, functools
 
 def all_stat(stats):
     cmd = sys.stdin.readline()
+    if len(stats) <= 1:
+        print('no traffic')
+        return
     print('='*70)
     hstat = {}
     for remote_ip, v in stats.items():

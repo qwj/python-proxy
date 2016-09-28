@@ -1,6 +1,6 @@
 import os, hashlib, struct, functools, argparse, hmac
 
-#pip install pycryptodome
+#pip3 install pycryptodome
 from Crypto.Cipher import ARC4, ChaCha20, Salsa20, AES, DES, CAST, Blowfish, ARC2
 
 class BaseCipher(object):
