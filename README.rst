@@ -1,15 +1,15 @@
 python-proxy
 ===========
 
-HTTP/Socks5/Shadowsocks asynchronous tunnel proxy implemented in Python 3.6 asyncio.
+HTTP/Socks/Shadowsocks asynchronous tunnel proxy implemented in Python 3.6 asyncio.
 
 Features
 -----------
 
 - Single-thread asynchronous IO with high availability and scalability.
 - Compact (~500 lines) and powerful by leveraging python builtin *asyncio* library.
-- Automatically detect incoming traffic: HTTP/Socks5/Shadowsocks.
-- Specify multiple remote servers for outcoming traffic: HTTP/Socks5/Shadowsocks.
+- Automatically detect incoming traffic: HTTP/Socks/Shadowsocks.
+- Specify multiple remote servers for outcoming traffic: HTTP/Socks/Shadowsocks.
 - Unix domain socket support for communicating locally.
 - Basic authentication support for all three protocols.
 - Regex pattern file support to route/block by hostname matching.
@@ -22,7 +22,7 @@ Features
 Python 3.6
 -----------
 
-*Python 3.5* added new syntax *async def* and *await* to make asyncio programming easier. *Python 3.6* added new syntax *formatted string literals*. This tool is to demonstrate how compact these new syntax can be. It includes many features, and is also fully ready for production usage.
+*Python 3.5* added new syntax *async def* and *await* to make asyncio programming easier. *Python 3.6* added new syntax *formatted string literals*. This tool is to demonstrate these new syntax so the minimal Python requirement is *Python 3.6*. It has many features, and is also fully ready for production usage.
 
 Installation
 -----------
@@ -55,23 +55,26 @@ Usage
     
     Online help: <https://github.com/qwj/python-proxy>
 
-Uri Syntax
+URI Syntax
 -----------
 
 {scheme}://[{cipher}@]{netloc}[?{rules}][#{auth}]
 
 - scheme
     - Currently supported scheme: http, socks, ss, ssl, secure. You can use + to link multiple protocols together.
-        :http: http protocol
-        :socks: socks5 protocol
-        :ss: shadowsocks protocol
-        :ssl: communicate in (unsecured) ssl
-        :secure: comnunicate in (secured) ssl
+
+        :http http protocol
+        :socks socks5 protocol
+        :ss shadowsocks protocol
+        :ssl communicate in (unsecured) ssl
+        :secure comnunicate in (secured) ssl
+
     - Valid schemes: http://, http+socks://, http+ssl://, ss+secure://, http+socks+ss://
     - Invalid schemes: ssl://, secure://
 - cipher
     - Cipher is consisted by cipher name, colon ':' and cipher key.
     - Full supported cipher list:
+
         +------------+------------+-----------+-------------+
         | Cipher     | Key Length | IV Length | Security    |
         +============+============+===========+=============+
@@ -97,6 +100,7 @@ Uri Syntax
         +------------+------------+-----------+-------------+
         | des-cfb    | 8          | 8         | 1           |
         +------------+------------+-----------+-------------+
+
     - To enable OTA encryption with shadowsocks, add '!' immediately after cipher name.
 - netloc
     - It can be "hostname:port" or "/unix_domaon_path". If the hostname is empty, server will listen on all interfaces.
@@ -129,24 +133,34 @@ We can define file "rules" as follow:
 
 Then start the pproxy
 
-    pproxy -i http+socks://:8080 -r http://aa.bb.cc.dd:8080?rules -v
-    
+    $ pproxy -i http+socks://:8080 -r http://aa.bb.cc.dd:8080?rules -v
+    http www.googleapis.com:443 -> http aa.bb.cc.dd:8080
+    socks www.youtube.com:443 -> http aa.bb.cc.dd:8080
+    http www.yahoo.com:80
+    DIRECT: 1 (0.5K/s,1.2M/s)   PROXY: 2 (24.3K/s,1.9M/s)
+
 With these parameters, this utility will serve incoming traffic by either http/socks5 protocol, redirect all google traffic to http proxy aa.bb.cc.dd:8080, and visit all other traffic locally.
 
-To bridge two servers, add cipher key to ensure data can't be intercepted. First, run pproxy locally
+To bridge two servers, add cipher encryption to ensure data can't be intercepted. First, run pproxy locally
 
-    pproxy -i ss://:8888 -r ss://chacha20:cipher_key@aa.bb.cc.dd:12345 -v
+    $ pproxy -i ss://:8888 -r ss://chacha20:cipher_key@aa.bb.cc.dd:12345 -v
     
 Next, run pproxy.py remotely on server "aa.bb.cc.dd"
 
-    pproxy -i ss://chacha20:cipher_key@:12345
+    $ pproxy -i ss://chacha20:cipher_key@:12345
     
 By doing this, the traffic between local and aa.bb.cc.dd is encrypted by stream cipher Chacha20 with key "cipher_key". If target hostname is not matched by regex file "rules", traffic will go through locally. Otherwise, traffic will go through the remote server by encryption.
 
 A more complex example:
 
-    pproxy -i ss://salsa20!:complex_cipher_key@/tmp/pproxy_socket -r http+ssl://domain1.com:443#username:password
+    $ pproxy -i ss://salsa20!:complex_cipher_key@/tmp/pproxy_socket -r http+ssl://domain1.com:443#username:password
 
 It listen on the unix domain socket /tmp/pproxy_socket, and use cipher name salsa20, cipher key "complex_cipher_key", and enable OTA encryption for shadowsocks protocol. The traffic is tunneled to remote https proxy with simple authentication.
+
+If you want to listen in SSL, you must specify ssl certificate and private key files by parameter "--ssl", there is an example:
+
+    $ pproxy -i http+ssl://0.0.0.0:443 --ssl server.crt,server.key --pac /autopac
+
+It listen on 443 HTTPS port, use the specified certificate and private key files. The "--pac" enable PAC support, so you can put https://yourdomain.com/autopac in your device's auto-configure url.
 
 
