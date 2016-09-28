@@ -2,7 +2,7 @@ import argparse, time, re, pickle, asyncio, functools, types, os, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "0.9.2"
+__version__ = "0.9.3"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
