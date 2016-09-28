@@ -155,12 +155,12 @@ A more complex example:
 
     $ pproxy -i ss://salsa20!:complex_cipher_key@/tmp/pproxy_socket -r http+ssl://domain1.com:443#username:password
 
-It listen on the unix domain socket /tmp/pproxy_socket, and use cipher name salsa20, cipher key "complex_cipher_key", and enable OTA encryption for shadowsocks protocol. The traffic is tunneled to remote https proxy with simple authentication.
+It listen on the unix domain socket /tmp/pproxy_socket, and use cipher name salsa20, cipher key "complex_cipher_key", and enable explicit OTA encryption for shadowsocks protocol. The traffic is tunneled to remote https proxy with simple authentication. If OTA mode is not specified, server will allow both non-OTA and OTA traffic. If specified OTA mode, server only allow OTA client to connect. More about shadowsocks OTA: https://shadowsocks.org/en/spec/one-time-auth.html
 
 If you want to listen in SSL, you must specify ssl certificate and private key files by parameter "--ssl", there is an example:
 
-    $ pproxy -i http+ssl://0.0.0.0:443 --ssl server.crt,server.key --pac /autopac
+    $ pproxy -i http+ssl://0.0.0.0:443 -i http://0.0.0.0:80 --ssl server.crt,server.key --pac /autopac
 
-It listen on 443 HTTPS port, use the specified certificate and private key files. The "--pac" enable PAC support, so you can put https://yourdomain.com/autopac in your device's auto-configure url.
+It listen on both 80 HTTP and 443 HTTPS ports, use the specified certificate and private key files. The "--pac" enable PAC support, so you can put https://yourdomain.com/autopac in your device's auto-configure url.
 
 
