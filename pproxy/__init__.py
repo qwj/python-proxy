@@ -105,7 +105,7 @@ def main():
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
     if not args.listen:
-        args.listen.append(uri_compile('http+socks://:/'))
+        args.listen.append(uri_compile('http+socks://:8080/'))
     if os.path.exists('.auth_tables'):
         with open('.auth_tables', 'rb') as f:
             args.auth_tables = pickle.load(f)
