@@ -133,11 +133,11 @@ We can define file "rules" as follow:
 
 Then start the pproxy
 
-    $ pproxy -i http+socks://:8080 -r http://aa.bb.cc.dd:8080?rules -v
-    http www.googleapis.com:443 -> http aa.bb.cc.dd:8080
-    socks www.youtube.com:443 -> http aa.bb.cc.dd:8080
-    http www.yahoo.com:80
-    DIRECT: 1 (0.5K/s,1.2M/s)   PROXY: 2 (24.3K/s,1.9M/s)
+    | $ pproxy -i http+socks://:8080 -r http://aa.bb.cc.dd:8080?rules -v
+    | http www.googleapis.com:443 -> http aa.bb.cc.dd:8080
+    | socks www.youtube.com:443 -> http aa.bb.cc.dd:8080
+    | http www.yahoo.com:80
+    | DIRECT: 1 (0.5K/s,1.2M/s)   PROXY: 2 (24.3K/s,1.9M/s)
 
 With these parameters, this utility will serve incoming traffic by either http/socks5 protocol, redirect all google traffic to http proxy aa.bb.cc.dd:8080, and visit all other traffic locally.
 
