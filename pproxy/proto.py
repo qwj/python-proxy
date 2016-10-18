@@ -115,18 +115,21 @@ class http(base):
         return header.isalpha()
 
     @staticmethod
-    async def parse(header, reader, writer, auth, auth_tables, remote_ip, pac, pactext, **kw):
+    async def parse(header, reader, writer, auth, auth_tables, remote_ip, httpget, **kw):
         lines = header + await reader.read_until(b'\r\n\r\n')
         headers = lines[:-4].decode().split('\r\n')
         method, path, ver = HTTP_LINE.fullmatch(headers.pop(0)).groups()
         lines = '\r\n'.join(i for i in headers if not i.startswith('Proxy-'))
         headers = dict(i.split(': ', 1) for i in headers if ': ' in i)
-        if method == 'GET' and pac and path.startswith(pac):
-            auth_tables[remote_ip] = time.time()
-            pacidx = 1 if 'all' in path else (2 if 'none' in path else 0)
-            text = (pactext[pacidx] % dict(host=headers["Host"])).encode()
-            writer.write(f'{ver} 200 OK\r\nConnection: close\r\nContent-Type: application/x-ns-proxy-autoconfig\r\nCache-Control: max-age=900\r\nContent-Length: {len(text)}\r\n\r\n'.encode() + text)
-            return None, None, None
+        url = urllib.parse.urlparse(path)
+        if method == 'GET' and not url.hostname:
+            for path, text in httpget.items():
+                if url.path == path:
+                    auth_tables[remote_ip] = time.time()
+                    text = (text % dict(host=headers["Host"])).encode()
+                    writer.write(f'{ver} 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\nCache-Control: max-age=900\r\nContent-Length: {len(text)}\r\n\r\n'.encode() + text)
+                    return None, None, None
+            raise Exception(f'404 {method} {path}')
         if auth:
             pauth = headers.get('Proxy-Authorization', None)
             httpauth = 'Basic ' + base64.b64encode(auth).decode()
@@ -142,8 +145,6 @@ class http(base):
         else:
             url = urllib.parse.urlparse(path)
             host_name = url.hostname
-            if not host_name:
-                raise Exception(f'404 {method} {path}')
             port = url.port or 80
             newpath = url._replace(netloc='', scheme='').geturl()
             return host_name, port, f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode()

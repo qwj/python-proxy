@@ -2,7 +2,7 @@ import argparse, time, re, pickle, asyncio, functools, types, os, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "0.9.4"
+__version__ = "0.9.6"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
@@ -15,12 +15,12 @@ asyncio.StreamReader.read_ = lambda self: self.read(PACKET_SIZE)
 asyncio.StreamReader.read_n = lambda self, n: asyncio.wait_for(self.readexactly(n), timeout=SOCKET_TIMEOUT)
 asyncio.StreamReader.read_until = lambda self, s: asyncio.wait_for(self.readuntil(s), timeout=SOCKET_TIMEOUT)
 
-async def proxy_handler(reader, writer, protos, auth, rserver, block, auth_tables, cipher, pac, pactext, unix_path, verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
+async def proxy_handler(reader, writer, protos, auth, rserver, block, auth_tables, cipher, httpget, unix_path, verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
     try:
         remote_ip = writer.get_extra_info('peername')[0] if not unix_path else None
-        reader_cipher = (await cipher(reader, writer))[0] if cipher else None
+        reader_cipher = cipher(reader, writer)[0] if cipher else None
         header = await reader.read_n(1)
-        lproto, host_name, port, initbuf = await proto.parse(protos, reader=reader, writer=writer, header=header, auth=auth, auth_tables=auth_tables, remote_ip=remote_ip, pac=pac, pactext=pactext, reader_cipher=reader_cipher)
+        lproto, host_name, port, initbuf = await proto.parse(protos, reader=reader, writer=writer, header=header, auth=auth, auth_tables=auth_tables, remote_ip=remote_ip, httpget=httpget, reader_cipher=reader_cipher)
         if host_name is None:
             writer.close()
             return
@@ -44,7 +44,7 @@ async def proxy_handler(reader, writer, protos, auth, rserver, block, auth_table
             raise Exception(f'Connection timeout {rserver}')
         try:
             if viaproxy:
-                writer_cipher_r = (await roption.cipher(reader_remote, writer_remote))[1] if roption.cipher else None
+                writer_cipher_r = roption.cipher(reader_remote, writer_remote)[1] if roption.cipher else None
                 await roption.protos[0].connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=roption.auth, host_name=host_name, port=port, initbuf=initbuf, writer_cipher_r=writer_cipher_r)
             else:
                 writer_remote.write(initbuf)
@@ -60,8 +60,8 @@ async def proxy_handler(reader, writer, protos, auth, rserver, block, auth_table
         try: writer.close()
         except Exception: pass
 
-def pattern_compile(file_name):
-    with open(file_name) as f:
+def pattern_compile(filename):
+    with open(filename) as f:
         return re.compile('|'.join(i.strip() for i in f if i.strip() and not i.startswith('#'))).fullmatch
 
 def uri_compile(uri):
@@ -100,7 +100,8 @@ def main():
     parser.add_argument('-b', dest='block', type=pattern_compile, help='block regex rules')
     parser.add_argument('-v', dest='v', action='store_true', help='print verbose output')
     parser.add_argument('--ssl', dest='sslfile', help='certfile[,keyfile] if server listen in ssl mode')
-    parser.add_argument('--pac', dest='pac', help='http pac file path')
+    parser.add_argument('--pac', dest='pac', help='http PAC path')
+    parser.add_argument('--get', dest='gets', default=[], action='append', help='http custom path/file')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
     if not args.listen:
@@ -110,13 +111,18 @@ def main():
             args.auth_tables = pickle.load(f)
     else:
         args.auth_tables = {}
+    args.httpget = {}
     if args.pac:
         pactext = 'function FindProxyForURL(u,h){' + (f'var b=/^(:?{args.block.__self__.pattern})$/i;if(b.test(h))return "";' if args.block else '')
         for i, option in enumerate(args.rserver):
             pactext += (f'var m{i}=/^(:?{option.match.__self__.pattern})$/i;if(m{i}.test(h))' if option.match else '') + f'return "PROXY %(host)s";'
-        args.pactext = (pactext+'return "DIRECT";}', 'function FindProxyForURL(u,h){{return "PROXY %(host)s";}}', 'function FindProxyForURL(u,h){return "DIRECT";}')
-    else:
-        args.pactext = None
+        args.httpget[args.pac] = pactext+'return "DIRECT";}'
+        args.httpget[args.pac+'/all'] = 'function FindProxyForURL(u,h){return "PROXY %(host)s";}'
+        args.httpget[args.pac+'/none'] = 'function FindProxyForURL(u,h){return "DIRECT";}'
+    for gets in args.gets:
+        path, filename = gets.split(',', 1)
+        with open(filename, 'r') as f:
+            args.httpget[path] = f.read()
     if args.sslfile:
         sslfile = args.sslfile.split(',')
         for option in args.listen:

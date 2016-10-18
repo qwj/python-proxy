@@ -5,7 +5,7 @@ from Crypto.Cipher import ARC4, ChaCha20, Salsa20, AES, DES, CAST, Blowfish, ARC
 
 class BaseCipher(object):
     CACHE = {}
-    def __init__(self, key, iv=None, ota=False):
+    def __init__(self, key, ota=False):
         if self.KEY_LENGTH > 0:
             self.key = self.CACHE.get(b'key'+key)
             if self.key is None:
@@ -15,8 +15,10 @@ class BaseCipher(object):
                 self.key = self.CACHE[b'key'+key] = b''.join(keybuf)[:self.KEY_LENGTH]
         else:
             self.key = key
-        self.iv = os.urandom(self.IV_LENGTH) if iv is None else iv
         self.ota = ota
+        self.iv = None
+    def setup_iv(self, iv=None):
+        self.iv = os.urandom(self.IV_LENGTH) if iv is None else iv
         self.setup()
     def decrypt(self, s):
         return self.cipher.decrypt(s)
@@ -143,13 +145,27 @@ def get_cipher(cipher_key):
     if cipher not in MAPPINGS:
         raise argparse.ArgumentTypeError(f'existing ciphers: {list(MAPPINGS.keys())}')
     cipher, key, ota = MAPPINGS[cipher], key.encode(), bool(ota) if ota else False
-    async def apply_cipher(reader, writer):
-        writer_cipher = cipher(key, ota=ota)
-        writer.write(writer_cipher.iv)
-        writer.write = lambda s, o=writer.write, p=writer_cipher.encrypt: o(p(s))
-        reader_cipher = cipher(key, await reader.read_n(len(writer_cipher.iv)), ota=ota)
-        reader._buffer = bytearray(reader_cipher.decrypt(bytes(reader._buffer)))
-        reader.feed_data = lambda s, o=reader.feed_data, p=reader_cipher.decrypt: o(p(s))
+    def apply_cipher(reader, writer):
+        reader_cipher, writer_cipher = cipher(key, ota=ota), cipher(key, ota=ota)
+        def feed_data(s, o=reader.feed_data):
+            if not reader_cipher.iv:
+                s = bytes(reader._buffer + s)
+                if len(s) >= reader_cipher.IV_LENGTH:
+                    reader_cipher.setup_iv(s[:reader_cipher.IV_LENGTH])
+                    s = reader_cipher.decrypt(s[reader_cipher.IV_LENGTH:])
+                    reader._buffer.clear()
+            else:
+                s = reader_cipher.decrypt(s)
+            return o(s)
+        def write(s, o=writer.write):
+            if not s:
+                return
+            if not writer_cipher.iv:
+                writer_cipher.setup_iv()
+                o(writer_cipher.iv)
+            return o(writer_cipher.encrypt(s))
+        reader.feed_data = feed_data
+        writer.write = write
         return reader_cipher, writer_cipher
     apply_cipher.ota = ota
     return apply_cipher
