@@ -2,7 +2,7 @@ import argparse, time, re, pickle, asyncio, functools, types, os, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "0.9.6"
+__version__ = "0.9.9"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
@@ -80,8 +80,8 @@ def uri_compile(uri):
         sslclient = None
     cipher, _, loc = url.netloc.rpartition('@')
     if cipher:
-        from pproxy import ciphers
-        cipher = ciphers.get_cipher(cipher)
+        from pproxy.cipher import get_cipher
+        cipher = get_cipher(cipher)
     match = pattern_compile(url.query) if url.query else None
     if loc:
         host, _, port = loc.partition(':')
