@@ -37,7 +37,7 @@ setup(
     ],
     keywords='proxy socks http shadowsocks cipher ssl',
     packages=['pproxy'],
-    install_requires=['pycryptodome'],
+    install_requires=[],
     entry_points={
         'console_scripts': [
             'pproxy=pproxy:main',

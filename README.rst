@@ -8,6 +8,7 @@ Features
 
 - Single-thread asynchronous IO with high availability and scalability.
 - Lightweight (~500 lines) and powerful by leveraging python builtin *asyncio* library.
+- No additional library is required. All codes are in Pure Python.
 - Automatically detect incoming traffic: HTTP/Socks/Shadowsocks.
 - Specify multiple remote servers for outcoming traffic: HTTP/Socks/Shadowsocks.
 - Unix domain socket support for communicating locally.
@@ -26,6 +27,8 @@ Python 3.6
 
 *Python 3.5* added new syntax **async def** and **await** to make asyncio programming easier. *Python 3.6* added new syntax **formatted string literals**. This tool is to demonstrate these new syntax, so the minimal Python requirement is **3.6**. With new syntax, it is easy to implement so many features in a short number of lines, and is also fully ready for production usage.
 
+**pproxy** is still possible to run under *Python 3.6*. Remove the **formatted string literals** syntax if you want to run in *Python 3.5*. Remove the **async def** and **await** syntax if you want to run in *Python 3.4*. You can also use **tulip** instead of **asyncio** to make **pproxy** run in all *Python 2/3* environment.
+
 Installation
 -----------
 
@@ -34,15 +37,16 @@ Installation
 Requirement
 -----------
 
-pycryptodome_ is the optional required library to enable cipher encryption support. Without installing this, you can still use pproxy with no encryption.
+pycryptodome_ is an optional library to enable faster (C version) cipher encryption support. **pproxy** has many built-in pure python ciphers without need to install pycryptodome_. They are lightweight and stable, but a little slow. After speed up with PyPy_, the pure python ciphers can achieve similar performance as pycryptodome_ (C version). If you care about server performance and don't run in PyPy_, just install pycryptodome_ to enable faster ciphers.
 
 .. _pycryptodome: https://pycryptodome.readthedocs.io/en/latest/src/introduction.html
+.. _PyPy: http://pypy.org
 
 Usage
 -----------
 
     $ pproxy -h
-    usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-b BLOCK] [-v] [--ssl SSLFILE] [--pac PAC] [--version]
+    usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-b BLOCK] [-v] [--ssl SSLFILE] [--pac PAC] [--get GETS] [--version]
     
     Proxy server that can tunnel among remote servers by regex rules. Supported
     protocols: http,socks,shadowsocks
@@ -54,7 +58,8 @@ Usage
       -b BLOCK       block regex rules
       -v             print verbose output
       --ssl SSLFILE  certfile[,keyfile] if server listen in ssl mode
-      --pac PAC      http pac file path
+      --pac PAC      http PAC path
+      --get GETS     http custom path/file
       --version      show program's version number and exit
     
     Online help: <https://github.com/qwj/python-proxy>
@@ -77,34 +82,50 @@ URI Syntax
     - Invalid schemes: ssl://, secure://
 - cipher
     - Cipher is consisted by cipher name, colon ':' and cipher key.
-    - Full supported cipher list:
+    - Full supported cipher list: (Pure python ciphers has ciphername suffix -py)
 
-        +------------+------------+-----------+-------------+
-        | Cipher     | Key Length | IV Length | Security    |
-        +============+============+===========+=============+
-        | table      | any        | 0         | 0 (lowest)  |
-        +------------+------------+-----------+-------------+
-        | rc4        | 16         | 0         | 0 (lowest)  |
-        +------------+------------+-----------+-------------+
-        | rc4-md5    | 16         | 16        | 0.5         |
-        +------------+------------+-----------+-------------+ 
-        | chacha20   | 32         | 8         | 5 (highest) |
-        +------------+------------+-----------+-------------+
-        | salsa20    | 32         | 8         | 5 (highest) |
-        +------------+------------+-----------+-------------+
-        | aes-128-cfb| 16         | 16        | 3           |
-        +------------+------------+-----------+-------------+
-        | aes-192-cfb| 24         | 16        | 3.5         |
-        +------------+------------+-----------+-------------+
-        | aes-256-cfb| 32         | 16        | 4.5         |
-        +------------+------------+-----------+-------------+
-        | bf-cfb     | 16         | 8         | 1           |
-        +------------+------------+-----------+-------------+
-        | cast5-cfb  | 16         | 8         | 2.5         |
-        +------------+------------+-----------+-------------+
-        | des-cfb    | 8          | 8         | 1.5         |
-        +------------+------------+-----------+-------------+
+        +----------------+------------+-----------+-------------+
+        | Cipher         | Key Length | IV Length | Score (0-5) |
+        +================+============+===========+=============+
+        | table-py       | any        | 0         | 0 (lowest)  |
+        +----------------+------------+-----------+-------------+
+        | rc4, rc4-py    | 16         | 0         | 0 (lowest)  |
+        +----------------+------------+-----------+-------------+
+        | rc4-md5        | 16         | 16        | 0.5         |
+        | rc4-md5-py     |            |           |             |
+        +----------------+------------+-----------+-------------+ 
+        | chacha20       | 32         | 8         | 5 (highest) |
+        | chacha20-py    |            |           |             |
+        +----------------+------------+-----------+-------------+
+        | salsa20        | 32         | 8         | 4.5         |
+        | salsa20-py     |            |           |             |
+        +----------------+------------+-----------+-------------+
+        | aes-128-cfb    | 16         | 16        | 3           |
+        | aes-128-cfb-py |            |           |             |
+        | aes-128-cfb8-py|            |           |             |
+        | aes-128-cfb1-py|            |           |             |
+        +----------------+------------+-----------+-------------+
+        | aes-192-cfb    | 24         | 16        | 3.5         |
+        | aes-192-cfb-py |            |           |             |
+        | aes-192-cfb8-py|            |           |             |
+        | aes-192-cfb1-py|            |           |             |
+        +----------------+------------+-----------+-------------+
+        | aes-256-cfb    | 32         | 16        | 4.5         |
+        | aes-256-cfb-py |            |           |             |
+        | aes-256-ctr-py |            |           |             |
+        | aes-256-ofb-py |            |           |             |
+        | aes-256-cfb8-py|            |           |             |
+        | aes-256-cfb1-py|            |           |             |
+        +----------------+------------+-----------+-------------+
+        | bf-cfb         | 16         | 8         | 1           |
+        | bf-cfb-py      |            |           |             |
+        +----------------+------------+-----------+-------------+
+        | cast5-cfb      | 16         | 8         | 2.5         |
+        +----------------+------------+-----------+-------------+
+        | des-cfb        | 8          | 8         | 1.5         |
+        +----------------+------------+-----------+-------------+
 
+    - Some pure python ciphers (aes-256-cfb1-py) is quite slow, and is not recommended to use without PyPy speedup. Try install pycryptodome_ and use C version cipher instead.
     - To enable OTA encryption with shadowsocks, add '!' immediately after cipher name.
 - netloc
     - It can be "hostname:port" or "/unix_domaon_path". If the hostname is empty, server will listen on all interfaces.
