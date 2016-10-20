@@ -150,7 +150,7 @@ class CTRCipher(StreamCipher):
             yield from data
             next_iv = 0 if next_iv >= (1<<(self.IV_LENGTH*8))-1 else next_iv+1
 
-class OFBCipher(StreamCipher):
+class OFBCipher(CTRCipher):
     def core(self):
         data = self.iv
         while 1:
