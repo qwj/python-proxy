@@ -27,7 +27,7 @@ Python 3.6
 
 *Python 3.5* added new syntax **async def** and **await** to make asyncio programming easier. *Python 3.6* added new syntax **formatted string literals**. This tool is to demonstrate these new syntax, so the minimal Python requirement is **3.6**. With new syntax, it is easy to implement so many features in a short number of lines, and is also fully ready for production usage.
 
-**pproxy** is still possible to run under *Python 3.6*. Remove the **formatted string literals** syntax if you want to run in *Python 3.5*. Remove the **async def** and **await** syntax if you want to run in *Python 3.4*. You can also use **tulip** instead of **asyncio** to make **pproxy** run in all *Python 2/3* environment.
+**pproxy** is still possible to run below *Python 3.6*. Remove the **formatted string literals** syntax if you want to run in *Python 3.5*. Remove the **async def** and **await** syntax if you want to run in *Python 3.4*. You can also use **tulip** instead of **asyncio** to make **pproxy** run in all *Python 2/3* environment.
 
 Installation
 -----------
@@ -37,7 +37,7 @@ Installation
 Requirement
 -----------
 
-pycryptodome_ is an optional library to enable faster (C version) cipher encryption support. **pproxy** has many built-in pure python ciphers without need to install pycryptodome_. They are lightweight and stable, but a little slow. After speed up with PyPy_, the pure python ciphers can achieve similar performance as pycryptodome_ (C version). If you care about server performance and don't run in PyPy_, just install pycryptodome_ to enable faster ciphers.
+pycryptodome_ is an optional library to enable faster (C version) cipher encryption. **pproxy** has many built-in pure python ciphers without need to install pycryptodome_. They are lightweight and stable, but a little slow. After speed up with PyPy_, the pure python ciphers can achieve similar performance as pycryptodome_ (C version). If you care about server performance and don't run in PyPy_, just install pycryptodome_ to enable faster ciphers.
 
 .. _pycryptodome: https://pycryptodome.readthedocs.io/en/latest/src/introduction.html
 .. _PyPy: http://pypy.org
@@ -92,32 +92,47 @@ URI Syntax
         | rc4, rc4-py    | 16         | 0         | 0 (lowest)  |
         +----------------+------------+-----------+-------------+
         | rc4-md5        | 16         | 16        | 0.5         |
+        |                |            |           |             |
         | rc4-md5-py     |            |           |             |
         +----------------+------------+-----------+-------------+ 
         | chacha20       | 32         | 8         | 5 (highest) |
+        |                |            |           |             |
         | chacha20-py    |            |           |             |
         +----------------+------------+-----------+-------------+
         | salsa20        | 32         | 8         | 4.5         |
+        |                |            |           |             |
         | salsa20-py     |            |           |             |
         +----------------+------------+-----------+-------------+
         | aes-128-cfb    | 16         | 16        | 3           |
+        |                |            |           |             |
         | aes-128-cfb-py |            |           |             |
+        |                |            |           |             |
         | aes-128-cfb8-py|            |           |             |
+        |                |            |           |             |
         | aes-128-cfb1-py|            |           |             |
         +----------------+------------+-----------+-------------+
         | aes-192-cfb    | 24         | 16        | 3.5         |
+        |                |            |           |             |
         | aes-192-cfb-py |            |           |             |
+        |                |            |           |             |
         | aes-192-cfb8-py|            |           |             |
+        |                |            |           |             |
         | aes-192-cfb1-py|            |           |             |
         +----------------+------------+-----------+-------------+
         | aes-256-cfb    | 32         | 16        | 4.5         |
+        |                |            |           |             |
         | aes-256-cfb-py |            |           |             |
+        |                |            |           |             |
         | aes-256-ctr-py |            |           |             |
+        |                |            |           |             |
         | aes-256-ofb-py |            |           |             |
+        |                |            |           |             |
         | aes-256-cfb8-py|            |           |             |
+        |                |            |           |             |
         | aes-256-cfb1-py|            |           |             |
         +----------------+------------+-----------+-------------+
         | bf-cfb         | 16         | 8         | 1           |
+        |                |            |           |             |
         | bf-cfb-py      |            |           |             |
         +----------------+------------+-----------+-------------+
         | cast5-cfb      | 16         | 8         | 2.5         |
