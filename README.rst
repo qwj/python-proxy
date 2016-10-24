@@ -145,7 +145,7 @@ URI Syntax
     - Some pure python ciphers (aes-256-cfb1-py) is quite slow, and is not recommended to use without PyPy speedup. Try install pycryptodome_ and use C version cipher instead.
     - To enable OTA encryption with shadowsocks, add '!' immediately after cipher name.
 - netloc
-    - It can be "hostname:port" or "/unix_domaon_path". If the hostname is empty, server will listen on all interfaces.
+    - It can be "hostname:port" or "/unix_domain_path". If the hostname is empty, server will listen on all interfaces.
     - Valid netloc: localhost:8080, 0.0.0.0:8123, /tmp/domain_socket, :8123
 - rules
     - The filename that contains regex rules
