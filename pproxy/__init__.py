@@ -2,7 +2,7 @@ import argparse, time, re, pickle, asyncio, functools, types, os, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "0.9.9"
+__version__ = "1.0.0"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
@@ -140,12 +140,16 @@ def main():
     for option in args.listen:
         print(f'Serving on {option.bind} by {",".join(i.__name__ for i in option.protos)}', '(SSL)' if option.sslclient else '')
         handler = functools.partial(proxy_handler, **vars(args), **vars(option))
-        server = loop.run_until_complete(option.server(handler))
-        servers.append(server)
-    try:
-        loop.run_forever()
-    except KeyboardInterrupt:
-        print('exit')
+        try:
+            server = loop.run_until_complete(option.server(handler))
+            servers.append(server)
+        except Exception as ex:
+            print(f'Start server failed.\n\t==> {ex}')
+    if servers:
+        try:
+            loop.run_forever()
+        except KeyboardInterrupt:
+            print('exit')
     if args.auth_tables:
         with open('.auth_tables', 'wb') as f:
             pickle.dump(args.auth_tables, f, pickle.HIGHEST_PROTOCOL)
