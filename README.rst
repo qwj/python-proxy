@@ -33,13 +33,13 @@ From **pproxy** 1.1.0, the minimal Python requirement is **3.3**, since old pyth
 Installation
 -----------
 
-    $ pip3 install pproxy
+    | $ pip3 install pproxy
 
 PyPy3
 -----------
 
-    $ pypy3 -m ensurepip
-    $ pypy3 -m pip install asyncio pproxy
+    | $ pypy3 -m ensurepip
+    | $ pypy3 -m pip install asyncio pproxy
 
 Requirement
 -----------
@@ -48,12 +48,12 @@ pycryptodome_ is an optional library to enable faster (C version) cipher encrypt
 
 These are some performance comparisons between Python ciphers and C ciphers (process 8MB data totally):
 
-    $ python3 speed.py chacha20
-    chacha20 0.6451280117034912
-    $ pypy3 speed.py chacha20-py
-    chacha20-py 1.3277630805969238
-    $ python3 speed.py chacha20-py
-    chacha20-py 48.85661292076111
+    | $ python3 speed.py chacha20
+    | chacha20 0.6451280117034912
+    | $ pypy3 speed.py chacha20-py
+    | chacha20-py 1.3277630805969238
+    | $ python3 speed.py chacha20-py
+    | chacha20-py 48.85661292076111
 
 .. _pycryptodome: https://pycryptodome.readthedocs.io/en/latest/src/introduction.html
 .. _PyPy: http://pypy.org
