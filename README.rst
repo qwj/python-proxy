@@ -1,7 +1,7 @@
 python-proxy
 ===========
 
-HTTP/Socks/Shadowsocks asynchronous tunnel proxy implemented in Python 3.6 asyncio.
+HTTP/Socks/Shadowsocks asynchronous tunnel proxy implemented in Python3 asyncio.
 
 Features
 -----------
@@ -19,25 +19,41 @@ Features
 - Shadowsocks OTA (One-Time-Auth_) experimental feature support.
 - Basic statistics for bandwidth and total traffic by client/hostname.
 - PAC support for automatically javascript configuration.
+- PyPy3.3 v5.5 support to enable JIT speedup.
 
 .. _One-Time-Auth: https://shadowsocks.org/en/spec/one-time-auth.html
 
-Python 3.6
+Python3
 -----------
 
-*Python 3.5* added new syntax **async def** and **await** to make asyncio programming easier. *Python 3.6* added new syntax **formatted string literals**. This tool is to demonstrate these new syntax, so the minimal Python requirement is **3.6**. With new syntax, it is easy to implement so many features in a short number of lines, and is also fully ready for production usage.
+*Python 3.5* added new syntax **async def** and **await** to make asyncio programming easier. *Python 3.6* added new syntax **formatted string literals**. This tool was to demonstrate these new syntax, so the minimal Python requirement was **3.6**.
 
-**pproxy** is still possible to run below *Python 3.6*. Remove the **formatted string literals** syntax if you want to run in *Python 3.5*. Remove the **async def** and **await** syntax if you want to run in *Python 3.4*. You can also use **tulip** instead of **asyncio** to make **pproxy** run in all *Python 2/3* environment.
+From **pproxy** 1.1.0, the minimal Python requirement is **3.3**, since old python versions are still widely used and PyPy3 only has 3.3 support currently. *Python 2* will not be supported in the future.
 
 Installation
 -----------
 
     $ pip3 install pproxy
 
+PyPy3
+-----------
+
+    $ pypy3 -m ensurepip
+    $ pypy3 -m pip install asyncio pproxy
+
 Requirement
 -----------
 
-pycryptodome_ is an optional library to enable faster (C version) cipher encryption. **pproxy** has many built-in pure python ciphers without need to install pycryptodome_. They are lightweight and stable, but a little slow. After speed up with PyPy_, the pure python ciphers can achieve similar performance as pycryptodome_ (C version). If you care about server performance and don't run in PyPy_, just install pycryptodome_ to enable faster ciphers.
+pycryptodome_ is an optional library to enable faster (C version) cipher encryption. **pproxy** has many built-in pure python ciphers without need to install pycryptodome_. They are lightweight and stable, but a little slow. After speed up with PyPy_, the pure python ciphers can achieve similar performance as pycryptodome_ (C version). If you care about cipher performance and don't run in PyPy_, just install pycryptodome_ to enable faster ciphers.
+
+These are some performance comparisons between Python ciphers and C ciphers (process 8MB data totally):
+
+    $ python3 speed.py chacha20
+    chacha20 0.6451280117034912
+    $ pypy3 speed.py chacha20-py
+    chacha20-py 1.3277630805969238
+    $ python3 speed.py chacha20-py
+    chacha20-py 48.85661292076111
 
 .. _pycryptodome: https://pycryptodome.readthedocs.io/en/latest/src/introduction.html
 .. _PyPy: http://pypy.org
@@ -146,6 +162,12 @@ URI Syntax
         | cast5-cfb       | 16         | 8         | 2.5         |
         +-----------------+------------+-----------+-------------+
         | des-cfb         | 8          | 8         | 1.5         |
+        +-----------------+------------+-----------+-------------+
+        | rc2-cfb-py      | 16         | 8         | 2           |
+        +-----------------+------------+-----------+-------------+
+        | idea-cfb-py     | 16         | 8         | 2.5         |
+        +-----------------+------------+-----------+-------------+
+        | seed-cfb-py     | 16         | 16        | 2           |
         +-----------------+------------+-----------+-------------+
 
     - Some pure python ciphers (aes-256-cfb1-py) is quite slow, and is not recommended to use without PyPy speedup. Try install pycryptodome_ and use C version cipher instead.
