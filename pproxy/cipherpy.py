@@ -5,7 +5,7 @@ from pproxy.cipher import BaseCipher
 # Pure Python Ciphers
 
 class Table_Cipher(BaseCipher):
-    LIBRARY = False
+    PYTHON = True
     KEY_LENGTH = 0
     IV_LENGTH = 0
     def setup(self):
@@ -25,11 +25,15 @@ class Table_Cipher(BaseCipher):
         return bytes.translate(s, self.encrypt_table)
 
 class StreamCipher(BaseCipher):
-    LIBRARY = False
+    PYTHON = True
     def setup(self):
         self.stream = self.core()
     def encrypt(self, s):
-        return bytes(i^next(self.stream) for i in s)
+        ret = bytearray()
+        for i in s:
+            ret.append(i^next(self.stream))
+        return bytes(ret)
+        #return bytes(i^next(self.stream) for i in s)
     decrypt = encrypt
 
 class RC4_Cipher(StreamCipher):
@@ -39,14 +43,14 @@ class RC4_Cipher(StreamCipher):
         data = list(range(256))
         y = 0
         for x in range(256):
-            y = (self.key[x % self.KEY_LENGTH] + data[x] + y) & 0xff
+            y = self.key[x%self.KEY_LENGTH]+data[x]+y & 0xff
             data[x], data[y] = data[y], data[x]
         x = y = 0
         while 1:
-            x = (x+1) & 0xff
-            y = (y+data[x]) & 0xff
+            x = x+1 & 0xff
+            y = y+data[x] & 0xff
             data[x], data[y] = data[y], data[x]
-            yield data[(data[x]+data[y]) & 0xff]
+            yield data[data[x]+data[y] & 0xff]
 
 class RC4_MD5_Cipher(RC4_Cipher):
     IV_LENGTH = 16
@@ -54,7 +58,7 @@ class RC4_MD5_Cipher(RC4_Cipher):
         self.key = hashlib.md5(self.key + self.iv).digest()
         RC4_Cipher.setup(self)
 
-ROL = lambda a, b: a<<b|(a&0xffffffff)>>(32-b)
+ROL = lambda a, b: a<<b&0xffffffff|(a&0xffffffff)>>32-b
 class ChaCha20_Cipher(StreamCipher):
     KEY_LENGTH = 32
     IV_LENGTH = 8
@@ -72,7 +76,7 @@ class ChaCha20_Cipher(StreamCipher):
                 H[d] = ROL(H[d]^H[a], 8)
                 H[c] += H[d]
                 H[b] = ROL(H[b]^H[c], 7)
-            yield from struct.pack('<16I', *((a+b)&0xffffffff for a, b in zip(H, data)))
+            yield from struct.pack('<16I', *(a+b&0xffffffff for a, b in zip(H, data)))
             data[12:14] = (0, data[13]+1) if data[12]==0xffffffff else (data[12]+1, data[13])
 
 class ChaCha20_IETF_Cipher(ChaCha20_Cipher):
@@ -91,7 +95,7 @@ class Salsa20_Cipher(StreamCipher):
                 H[d] ^= ROL(H[a]+H[b], 9)
                 H[c] ^= ROL(H[d]+H[a], 13)
                 H[b] ^= ROL(H[c]+H[d], 18)
-            yield from struct.pack('<16I', *((a+b)&0xffffffff for a, b in zip(H, data)))
+            yield from struct.pack('<16I', *(a+b&0xffffffff for a, b in zip(H, data)))
             data[8:10] = (0, data[9]+1) if data[8]==0xffffffff else (data[8]+1, data[9])
 
 class CFBCipher(StreamCipher):
@@ -107,7 +111,7 @@ class CFBCipher(StreamCipher):
             if self.bit_mode:
                 j = 0
                 for k in range(7,-1,-1):
-                    ibit = (i>>k)&1
+                    ibit = i>>k & 1
                     jbit = ibit^self.stream.send(self.last)
                     j |= jbit<<k
                     self.last = ibit if inv else jbit
@@ -134,7 +138,7 @@ class CFBCipher(StreamCipher):
             data = self.cipher.encrypt(next_iv.to_bytes(self.IV_LENGTH, 'big'))
             next_iv = next_iv<<segment_bit & mask
             for i in range(segment_bit):
-                next_iv |= (yield (data[i//8]>>(7-i%8))&1)<<(segment_bit-1-i)
+                next_iv |= (yield data[i//8]>>(7-i%8)&1)<<(segment_bit-1-i)
 
 class CFB8Cipher(CFBCipher):
     SEGMENT_SIZE = 8
@@ -146,9 +150,6 @@ class CTRCipher(StreamCipher):
     def setup(self):
         self.stream = self.core()
         self.cipher = self.CIPHER.new(self.key)
-    def encrypt(self, s):
-        return bytes(i^next(self.stream) for i in s)
-    decrypt = encrypt
     def core(self):
         next_iv = int.from_bytes(self.iv, 'big')
         while 1:
@@ -173,10 +174,10 @@ class RAW:
 
 class AES(RAW):
     g1 = base64.b64decode(b'Y3x3e/Jrb8UwAWcr/terdsqCyX36WUfwrdSir5ykcsC3/ZMmNj/3zDSl5fFx2DEVBMcjwxiWBZoHEoDi6yeydQmDLBobblqgUjvWsynjL4RT0QDtIPyxW2rLvjlKTFjP0O+q+0NNM4VF+QJ/UDyfqFGjQI+SnTj1vLbaIRD/89LNDBPsX5dEF8Snfj1kXRlzYIFP3CIqkIhG7rgU3l4L2+AyOgpJBiRcwtOsYpGV5HnnyDdtjdVOqWxW9Opleq4IunglLhymtMbo3XQfS72LinA+tWZIA/YOYTVXuYbBHZ7h+JgRadmOlJseh+nOVSjfjKGJDb/mQmhBmS0PsFS7Fg==')
-    g2 = [((a<<1)&0xff)^0x1b if a&0x80 else a<<1 for a in g1]
-    g3 = [a^(((a<<1)&0xff)^0x1b if a&0x80 else a<<1) for a in g1]
+    g2 = [a<<1&0xff^0x1b if a&0x80 else a<<1 for a in g1]
+    g3 = [a^(a<<1&0xff^0x1b if a&0x80 else a<<1) for a in g1]
     Rcon = base64.b64decode(b'jQECBAgQIECAGzZs2KtNmi9evGPGlzVq1LN9+u/FkTly5NO9YcKfJUqUM2bMgx06dOjL')
-    shifts = tuple((j,j&3|((j>>2)+(j&3))*4&12,(j+3)&3|((j>>2)+((j+3)&3))*4&12,(j+2)&3|((j>>2)+((j+2)&3))*4&12,(j+1)&3|((j>>2)+((j+1)&3))*4&12) for j in range(16))
+    shifts = tuple((j,j&3|((j>>2)+(j&3))*4&12,j+3&3|((j>>2)+(j+3&3))*4&12,j+2&3|((j>>2)+(j+2&3))*4&12,j+1&3|((j>>2)+(j+1&3))*4&12) for j in range(16))
     def __init__(self, key):
         size, ekey = len(key), bytearray(key)
         nbr = {16:10, 24:12, 32:14}[size]
@@ -193,11 +194,11 @@ class AES(RAW):
         s = [data[j]^self.ekey[0][j] for j in range(16)]
         for key in self.ekey[1:-1]:
             s = [self.g2[s[a]]^self.g1[s[b]]^self.g1[s[c]]^self.g3[s[d]]^key[j] for j,a,b,c,d in self.shifts]
-        return bytes(self.g1[s[self.shifts[j][1]]]^self.ekey[-1][j] for j in range(16))
+        return bytes([self.g1[s[self.shifts[j][1]]]^self.ekey[-1][j] for j in range(16)])
 
 for method in (CFBCipher, CFB8Cipher, CFB1Cipher, CTRCipher, OFBCipher):
     for key in (32, 24, 16):
-        name = f'AES_{key*8}_{method.__name__[:-6]}_Cipher'
+        name = 'AES_{}_{}_Cipher'.format(key*8, method.__name__[:-6])
         globals()[name] = type(name, (method,), dict(KEY_LENGTH=key, IV_LENGTH=16, CIPHER=AES))
 
 class Blowfish(RAW):
@@ -208,23 +209,22 @@ class Blowfish(RAW):
         for N in range(1<<20):
             xn, xd = 120*N**2 + 151*N + 47, 512*N**4 + 1024*N**3 + 712*N**2 + 194*N + 15
             n, d = ((16 * n * xd) + (xn * d)) % (d * xd), d * xd
-            yield b'%x' % (16 * n // d)
+            yield '%x' % (16 * n // d)
     def __init__(self, key):
         if not self.P:
             pi = self.hex_pi()
-            self.__class__.P = [int(b''.join(next(pi) for j in range(8)), 16) for i in range(18+1024)]
+            self.__class__.P = [int(''.join(next(pi) for j in range(8)), 16) for i in range(18+1024)]
         self.p = [a^b for a, b in zip(self.P[:18], struct.unpack('>18I', (key*(72//len(key)+1))[:72]))]+self.P[18:]
         buf = b'\x00'*8
         for i in range(0, 1042, 2):
             buf = self.encrypt(buf)
             self.p[i:i+2] = struct.unpack('>II', buf)
     def encrypt(self, s):
-        Xl, Xr = struct.unpack('>II', s)
-        for i in range(16):
-            Xl ^= self.p[i]
-            y = ((self.p[18+(Xl>>24)]+self.p[274+((Xl>>16)&0xff)])^self.p[530+((Xl>>8)&0xff)])+self.p[786+(Xl&0xff)]
-            Xl, Xr = (Xr ^ y) & 0xffffffff, Xl
-        return struct.pack('>II', Xr^self.p[17], Xl^self.p[16])
+        sl, sr = struct.unpack('>II', s)
+        sl ^= self.p[0]
+        for i in self.p[1:17]:
+            sl, sr = sr ^ i ^ (self.p[18+(sl>>24)]+self.p[274+(sl>>16&0xff)]^self.p[530+(sl>>8&0xff)])+self.p[786+(sl&0xff)] & 0xffffffff, sl
+        return struct.pack('>II', sr^self.p[17], sl)
 
 class BF_CFB_Cipher(CFBCipher):
     KEY_LENGTH = 16
@@ -238,7 +238,7 @@ class Camellia(RAW):
     KS = base64.b64decode(b'AAIICiAiKCpIShETGTM5OxIQQkBKSCMhKykAAgwOJCYoKkRGTE4RExkbMTM1Nz0/EhAaGEZESkgjIS8t')
     KS = tuple((i%16//4, i%4*32, (64,51,49,36,34)[i>>4]) for i in KS)
     def R(self, s, t):
-        t = sum(S[((t^s>>64)>>(i*8))&0xff]<<(i*8+32)%64 for i,S in enumerate(self.S))
+        t = sum(S[(t^s>>64)>>(i*8)&0xff]<<(i*8+32)%64 for i,S in enumerate(self.S))
         t = t^t>>32<<8&0xffffff00^t>>56^((t>>32<<56|t>>8)^t<<48)&0xffff<<48^(t>>8^t<<16)&0xffff<<32
         return (t^t>>8&0xff<<24^t>>40^t<<16&0xff<<56^t<<56^(t>>32<<48^t>>16^t<<24)&0xffffff<<32^s)<<64&(1<<128)-1|s>>64
     def __init__(self, key):
@@ -266,5 +266,73 @@ class Camellia_192_CFB_Cipher(Camellia_256_CFB_Cipher):
 class Camellia_128_CFB_Cipher(Camellia_256_CFB_Cipher):
     KEY_LENGTH = 16
 
-MAP = {name[:-7].replace('_', '-').lower()+'-py': cls for name, cls in globals().items() if name.endswith('_Cipher')}
+class IDEA(RAW):
+    def __init__(self, key):
+        e = list(struct.unpack('>8H', key))
+        for i in range(8, 52):
+            e.append((e[i-8&0xf8|i+1&0x7]&0x7f)<<9|e[i-8&0xf8|i+2&0x7]>>7)
+        self.e = [e[i*6:i*6+6] for i in range(9)]
+    def encrypt(self, s):
+        M = lambda a,b: (a*b-(a*b>>16)+(a*b&0xffff<a*b>>16) if a else 1-b if b else 1-a)&0xffff
+        s0, s1, s2, s3 = struct.unpack('>4H', s)
+        for e in self.e[:-1]:
+            s0, o1, o2, s3 = M(s0, e[0]), s1+e[1], s2+e[2]&0xffff, M(s3, e[3])
+            s2 = M(o2^s0, e[4])
+            s1 = M((o1^s3)+s2&0xffff, e[5])
+            s0, s1, s2, s3 = s0^s1, s1^o2, s2+s1^o1, s3^s2+s1&0xffff
+        e = self.e[-1]
+        return struct.pack('>4H', M(s0, e[0]), s2+e[1]&0xffff, s1+e[2]&0xffff, M(s3, e[3]))
+
+class IDEA_CFB_Cipher(CFBCipher):
+    KEY_LENGTH = 16
+    IV_LENGTH = 8
+    CIPHER = IDEA
+
+class SEED(RAW):
+    S0 = base64.b64decode(b'qYXW01QdrCVdQxgeUfzKYyhEIJ3g4sgXpY8De7sT0u5wjD+oMt32dOyVC1dcW70BJBxzmBDM8tks53KDm9GGyWBQo+sNtp5Pt1rGeKYSr9Vhw7RBUn2NCB+ZABkEU/fh/XYvJ7CLDquibpNNaXwJCr/v88WHFP5k3i5LGgYha2YC9ZKKDLN+0HpHluUmgK3foTA3rjYVIjj0p0VMgemElzXLzjxxEceJdfva+JRZgsT/STlnwM/XuA+OQiORbNukNPFIwm89LUC+PrzBqrpOVTvcaH+c2EpWd6DtRrUrZfrjubGfXvnmsjHqbV/k8M2IFjpY1GIpBzPoGwV5kGoqmg==')
+    S1 = base64.b64decode(b'OOgtps/es7ivYFXHRG9rW8NiM7UpoOKn05ERBhy8NkvviGyoF8QW9MJF4dY/PY6YKE72PqX5Dd/YK2Z6Jy/xckLUQcBzZ6yL962AH8osqjTSC+7pXZQY+FeuCMUTzYa5/33BMfWKarHRINcCIgRocQfbnZlhvuZZ3VGQ3Jqjq9CBD0ca4+yNv5Z7XKKhYyNNyJ6cOgwuum6fWvKS80l4zBX7cHV/NRADZG3GdNW06gl2Gf5AEuC9BfoB8CpeqVZDhRSJm7DlSHmX/B6CIYwbX3dUsh0lTwBG7VhS637ayf0wlWU8tuS7fA5QOSYyhGmTN+ckpMtTCofZTIOPzjtKtw==')
+    G = lambda self, x, M=b'\xfc\xf3\xcf\x3f': sum((self.S0[x&0xff]&M[i]^self.S1[x>>8&0xff]&M[i+1&3]^self.S0[x>>16&0xff]&M[i+2&3]^self.S1[x>>24&0xff]&M[i+3&3])<<i*8 for i in range(4))
+    def __init__(self, key):
+        self.e = []
+        key0, key1 = struct.unpack('>QQ', key)
+        for i, kc in enumerate((0x9e3779b9, 0x3c6ef373, 0x78dde6e6, 0xf1bbcdcc, 0xe3779b99, 0xc6ef3733, 0x8dde6e67, 0x1bbcdccf, 0x3779b99e, 0x6ef3733c, 0xdde6e678, 0xbbcdccf1, 0x779b99e3, 0xef3733c6, 0xde6e678d, 0xbcdccf1b)):
+            self.e.append((self.G((key0>>32)+(key1>>32)-kc), self.G(key0-key1+kc)))
+            key0, key1 = (key0, (key1<<8|key1>>56)&(1<<64)-1) if i&1 else ((key0<<56|key0>>8)&(1<<64)-1, key1)
+    def encrypt(self, s):
+        s0, s1, s2, s3 = struct.unpack('>4I', s)
+        for k0, k1 in self.e:
+            t0 = self.G(s2^k0^s3^k1)
+            t1 = self.G(t0+(s2^k0))
+            t0 = self.G(t1+t0)
+            s0, s1, s2, s3 = s2, s3, s0^t0+t1, s1^t0
+        return struct.pack('>4I', s2&0xffffffff, s3, s0&0xffffffff, s1)
+
+class SEED_CFB_Cipher(CFBCipher):
+    KEY_LENGTH = 16
+    IV_LENGTH = 16
+    CIPHER = SEED
+
+class RC2(RAW):
+    S = base64.b64decode(b'2Xj5xBndte0o6f15SqDYncZ+N4MrdlOOYkxkiESL+6IXmln1h7NPE2FFbY0JgX0yvY9A64a3ewvwlSEiXGtOglTWZZPOYLIcc1bAFKeM8dwSdcofO77k0UI91DCjPLYmb78O2kZpB1cn8h2bvJRDA/gRx/aQ7z7nBsPVL8hmHtcI6OregFLu94Sqcqw1TWoqlhrScVoVSXRLn9BeBBik7MLgQW4PUcvMJJGvUKH0cDmZfDqFI7i0evwCNlslVZcxLV36mOOKkq4F3ykQZ2y6ydMA5s/hnqgsYxYBP1jiiakNODQbqzP/sLtIDF+5sc0uxfPbR+WlnHcKpiBo/n/BrQ==')
+    B = list(range(20))+[-4,-3,-2,-1]+list(range(20,44))+[-4,-3,-2,-1]+list(range(44,64))
+    def __init__(self, key):
+        e = bytearray(key)
+        for i in range(128-len(key)):
+            e.append(self.S[e[-1]+e[-len(key)]&0xff])
+        e[-len(key)] = self.S[e[-len(key)]]
+        for i in range(127-len(key), -1, -1):
+            e[i] = self.S[e[i+1]^e[i+len(key)]]
+        self.e = struct.unpack('<64H', e)
+    def encrypt(self, s):
+        s = list(struct.unpack('<4H', s))
+        for j in self.B:
+            s[j&3] = s[j&3]+self.e[j]+(s[j+3&3]&s[j+2&3])+(~s[j+3&3]&s[j+1&3])<<j%4*4//3+1&0xffff|(s[j&3]+self.e[j]+(s[j+3&3]&s[j+2&3])+(~s[j+3&3]&s[j+1&3])&0xffff)>>15-j%4*4//3 if j>=0 else s[j]+self.e[s[j+3]&0x3f]
+        return struct.pack('<4H', *s)
+
+class RC2_CFB_Cipher(CFBCipher):
+    KEY_LENGTH = 16
+    IV_LENGTH = 8
+    CIPHER = RC2
+
+MAP = {cls.name(): cls for name, cls in globals().items() if name.endswith('_Cipher')}
 

@@ -1,7 +1,7 @@
 import os, hashlib, argparse, hmac
 
 class BaseCipher(object):
-    LIBRARY = True
+    PYTHON = False
     CACHE = {}
     def __init__(self, key, ota=False):
         if self.KEY_LENGTH > 0:
@@ -24,14 +24,15 @@ class BaseCipher(object):
         return self.cipher.encrypt(s)
     def patch_ota_reader(self, reader):
         chunk_id = 0
-        async def patched_read():
+        @asyncio.coroutine
+        def patched_read():
             nonlocal chunk_id
             try:
-                data_len = int.from_bytes(await reader.readexactly(2), 'big')
+                data_len = int.from_bytes((yield from reader.readexactly(2)), 'big')
             except Exception:
                 return None
-            checksum = await reader.readexactly(10)
-            data = await reader.readexactly(data_len)
+            checksum = yield from reader.readexactly(10)
+            data = yield from reader.readexactly(data_len)
             checksum_server = hmac.new(self.iv+chunk_id.to_bytes(4, 'big'), data, 'sha1').digest()
             assert checksum_server[:10] == checksum
             chunk_id += 1
@@ -47,6 +48,9 @@ class BaseCipher(object):
             chunk_id += 1
             return write(len(data).to_bytes(2, 'big') + checksum[:10] + data)
         writer.write = patched_write
+    @classmethod
+    def name(cls):
+        return cls.__name__.replace('_Cipher', '').replace('_', '-').lower()
 
 class RC4_Cipher(BaseCipher):
     KEY_LENGTH = 16
@@ -98,6 +102,19 @@ class AES_192_CFB8_Cipher(AES_256_CFB8_Cipher):
 class AES_128_CFB8_Cipher(AES_256_CFB8_Cipher):
     KEY_LENGTH = 16
 
+class AES_256_OFB_Cipher(BaseCipher):
+    KEY_LENGTH = 32
+    IV_LENGTH = 16
+    def setup(self):
+        from Crypto.Cipher import AES
+        self.cipher = AES.new(self.key, AES.MODE_OFB, iv=self.iv)
+
+class AES_192_OFB_Cipher(AES_256_OFB_Cipher):
+    KEY_LENGTH = 24
+
+class AES_128_OFB_Cipher(AES_256_OFB_Cipher):
+    KEY_LENGTH = 16
+
 class BF_CFB_Cipher(BaseCipher):
     KEY_LENGTH = 16
     IV_LENGTH = 8
@@ -119,27 +136,27 @@ class DES_CFB_Cipher(BaseCipher):
         from Crypto.Cipher import DES
         self.cipher = DES.new(self.key, DES.MODE_CFB, iv=self.iv, segment_size=64)
 
-MAP = {name[:-7].replace('_', '-').lower(): cls for name, cls in globals().items() if name.endswith('_Cipher')}
+MAP = {cls.name(): cls for name, cls in globals().items() if name.endswith('_Cipher')}
 
 def get_cipher(cipher_key):
-    from pproxy.cipherpy import MAP as MAP2
-    CIPHER_MAP = dict(list(MAP.items())+list(MAP2.items()))
+    from pproxy.cipherpy import MAP as MAP_PY
     cipher, _, key = cipher_key.partition(':')
     cipher_name, ota, _ = cipher.partition('!')
     if not key:
         raise argparse.ArgumentTypeError('empty key')
-    if cipher_name not in CIPHER_MAP:
-        raise argparse.ArgumentTypeError(f'existing ciphers: {list(sorted(CIPHER_MAP.keys()))}')
-    cipher, key, ota = CIPHER_MAP[cipher_name], key.encode(), bool(ota) if ota else False
-    if cipher.LIBRARY:
+    if cipher_name not in MAP and cipher_name not in MAP_PY:
+        raise argparse.ArgumentTypeError('existing ciphers: {}'.format(sorted(set(MAP)|set(MAP_PY))))
+    key, ota = key.encode(), bool(ota) if ota else False
+    cipher = MAP.get(cipher_name)
+    if cipher:
         try:
             assert __import__('Crypto').version_info >= (3, 4)
         except Exception:
-            if cipher_name+'-py' in CIPHER_MAP:
-                cipher = CIPHER_MAP[cipher_name+'-py']
-                print(f'Switch to python cipher [{cipher_name}-py]')
-            else:
-                raise argparse.ArgumentTypeError(f'this cipher needs library: "pip3 install pycryptodome"')
+            cipher = None
+    if cipher is None:
+        cipher = MAP_PY.get(cipher_name)
+    if cipher is None:
+        raise argparse.ArgumentTypeError('this cipher needs library: "pip3 install pycryptodome"')
     def apply_cipher(reader, writer):
         reader_cipher, writer_cipher = cipher(key, ota=ota), cipher(key, ota=ota)
         reader_cipher._buffer = b''
@@ -162,7 +179,11 @@ def get_cipher(cipher_key):
             return o(writer_cipher.encrypt(s))
         reader.feed_data = feed_data
         writer.write = write
+        if reader._buffer:
+            reader._buffer, buf = bytearray(), reader._buffer
+            feed_data(buf)
         return reader_cipher, writer_cipher
+    apply_cipher.name = cipher_name + ('-py' if cipher.PYTHON else '')
     apply_cipher.ota = ota
     return apply_cipher
 
