@@ -1,4 +1,4 @@
-import os, hashlib, argparse, hmac
+import os, hashlib
 
 class BaseCipher(object):
     PYTHON = False
@@ -22,32 +22,6 @@ class BaseCipher(object):
         return self.cipher.decrypt(s)
     def encrypt(self, s):
         return self.cipher.encrypt(s)
-    def patch_ota_reader(self, reader):
-        chunk_id = 0
-        @asyncio.coroutine
-        def patched_read():
-            nonlocal chunk_id
-            try:
-                data_len = int.from_bytes((yield from reader.readexactly(2)), 'big')
-            except Exception:
-                return None
-            checksum = yield from reader.readexactly(10)
-            data = yield from reader.readexactly(data_len)
-            checksum_server = hmac.new(self.iv+chunk_id.to_bytes(4, 'big'), data, 'sha1').digest()
-            assert checksum_server[:10] == checksum
-            chunk_id += 1
-            return data
-        reader.read_ = patched_read
-    def patch_ota_writer(self, writer):
-        chunk_id = 0
-        write = writer.write
-        def patched_write(data):
-            nonlocal chunk_id
-            if not data: return
-            checksum = hmac.new(self.iv+chunk_id.to_bytes(4, 'big'), data, 'sha1').digest()
-            chunk_id += 1
-            return write(len(data).to_bytes(2, 'big') + checksum[:10] + data)
-        writer.write = patched_write
     @classmethod
     def name(cls):
         return cls.__name__.replace('_Cipher', '').replace('_', '-').lower()
@@ -143,9 +117,9 @@ def get_cipher(cipher_key):
     cipher, _, key = cipher_key.partition(':')
     cipher_name, ota, _ = cipher.partition('!')
     if not key:
-        raise argparse.ArgumentTypeError('empty key')
+        return 'empty key', None
     if cipher_name not in MAP and cipher_name not in MAP_PY:
-        raise argparse.ArgumentTypeError('existing ciphers: {}'.format(sorted(set(MAP)|set(MAP_PY))))
+        return 'existing ciphers: {}'.format(sorted(set(MAP)|set(MAP_PY))), None
     key, ota = key.encode(), bool(ota) if ota else False
     cipher = MAP.get(cipher_name)
     if cipher:
@@ -156,7 +130,7 @@ def get_cipher(cipher_key):
     if cipher is None:
         cipher = MAP_PY.get(cipher_name)
     if cipher is None:
-        raise argparse.ArgumentTypeError('this cipher needs library: "pip3 install pycryptodome"')
+        return 'this cipher needs library: "pip3 install pycryptodome"', None
     def apply_cipher(reader, writer):
         reader_cipher, writer_cipher = cipher(key, ota=ota), cipher(key, ota=ota)
         reader_cipher._buffer = b''
@@ -185,5 +159,5 @@ def get_cipher(cipher_key):
         return reader_cipher, writer_cipher
     apply_cipher.name = cipher_name + ('-py' if cipher.PYTHON else '')
     apply_cipher.ota = ota
-    return apply_cipher
+    return None, apply_cipher
 
