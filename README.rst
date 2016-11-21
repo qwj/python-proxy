@@ -1,7 +1,7 @@
 python-proxy
 ===========
 
-HTTP/Socks/Shadowsocks asynchronous tunnel proxy implemented in Python3 asyncio.
+HTTP/Socks/Shadowsocks/Redirect asynchronous tunnel proxy implemented in Python3 asyncio.
 
 Features
 -----------
@@ -9,7 +9,7 @@ Features
 - Single-thread asynchronous IO with high availability and scalability.
 - Lightweight (~500 lines) and powerful by leveraging python builtin *asyncio* library.
 - No additional library is required. All codes are in Pure Python.
-- Automatically detect incoming traffic: HTTP/Socks/Shadowsocks.
+- Automatically detect incoming traffic: HTTP/Socks/Shadowsocks/Redirect.
 - Specify multiple remote servers for outcoming traffic: HTTP/Socks/Shadowsocks.
 - Unix domain socket support for communicating locally.
 - Basic authentication support for all three protocols.
@@ -19,6 +19,7 @@ Features
 - Shadowsocks OTA (One-Time-Auth_) experimental feature support.
 - Basic statistics for bandwidth and total traffic by client/hostname.
 - PAC support for automatically javascript configuration.
+- Iptables NAT redirect packet tunnel support.
 - PyPy3.3 v5.5 support to enable JIT speedup.
 
 .. _One-Time-Auth: https://shadowsocks.org/en/spec/one-time-auth.html
@@ -65,7 +66,7 @@ Usage
     usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-b BLOCK] [-v] [--ssl SSLFILE] [--pac PAC] [--get GETS] [--version]
     
     Proxy server that can tunnel among remote servers by regex rules. Supported
-    protocols: http,socks,shadowsocks
+    protocols: http,socks,shadowsocks,redirect
     
     optional arguments:
       -h, --help     show this help message and exit
@@ -91,6 +92,7 @@ URI Syntax
         :http: http protocol
         :socks: socks5 protocol
         :ss: shadowsocks protocol
+        :redir: redirect protocol (iptables nat)
         :ssl: communicate in (unsecured) ssl
         :secure: comnunicate in (secured) ssl
 
@@ -232,5 +234,12 @@ If you want to listen in SSL, you must specify ssl certificate and private key f
     $ pproxy -i http+ssl://0.0.0.0:443 -i http://0.0.0.0:80 --ssl server.crt,server.key --pac /autopac
 
 It listen on both 80 HTTP and 443 HTTPS ports, use the specified certificate and private key files. The "--pac" enable PAC support, so you can put https://yourdomain.com/autopac in your device's auto-configure url.
+
+An iptable NAT redirect example:
+
+    | $ iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 5555
+    | $ pproxy -i redir://:5555 -r http://remote_http_server:3128 -v
+
+This example illustrates how to redirect all local output tcp traffic with destination port 80 to localhost port 5555 listened by **pproxy**, and then tunnel the traffic to remote http proxy.
 
 

@@ -38,7 +38,7 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
     ],
-    keywords='proxy socks http shadowsocks cipher ssl',
+    keywords='proxy socks http shadowsocks redirect tunnel cipher ssl',
     packages=['pproxy'],
     install_requires=[],
     entry_points={
