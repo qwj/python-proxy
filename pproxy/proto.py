@@ -41,7 +41,7 @@ class Shadowsocks(BaseProtocol):
     name = 'ss'
     def correct_header(self, header, auth, **kw):
         return auth and header == auth[:1] or not auth and header and header[0] in (1, 3, 4, 17, 19, 20)
-    async def patch_ota_reader(self, cipher, reader):
+    def patch_ota_reader(self, cipher, reader):
         chunk_id = 0
         async def patched_read():
             nonlocal chunk_id
@@ -51,7 +51,7 @@ class Shadowsocks(BaseProtocol):
                 return None
             checksum_client = await reader.readexactly(10)
             data = await reader.readexactly(data_len)
-            checksum = hmac.new(cipher.iv+chunk_id.to_bytes(4, 'big'), data, hashlib.sha1).digest()
+            checksum = hmac.digest(cipher.iv+chunk_id.to_bytes(4, 'big'), data, hashlib.sha1)
             assert checksum[:10] == checksum_client
             chunk_id += 1
             return data
@@ -62,7 +62,7 @@ class Shadowsocks(BaseProtocol):
         def patched_write(data):
             nonlocal chunk_id
             if not data: return
-            checksum = hmac.new(cipher.iv+chunk_id.to_bytes(4, 'big'), data, hashlib.sha1).digest()
+            checksum = hmac.digest(cipher.iv+chunk_id.to_bytes(4, 'big'), data, hashlib.sha1)
             chunk_id += 1
             return write(len(data).to_bytes(2, 'big') + checksum[:10] + data)
         writer.write = patched_write
@@ -76,7 +76,7 @@ class Shadowsocks(BaseProtocol):
         host_name, port, data = await socks_address_process(reader, header[0])
         assert ota or not reader_cipher or not reader_cipher.ota, 'SS client must support OTA'
         if ota and reader_cipher:
-            checksum = hmac.new(reader_cipher.iv+reader_cipher.key, header+data, hashlib.sha1).digest()
+            checksum = hmac.digest(reader_cipher.iv+reader_cipher.key, header+data, hashlib.sha1)
             assert checksum[:10] == (await reader.read_n(10)), 'Unknown OTA checksum'
             self.patch_ota_reader(reader_cipher, reader)
         return host_name, port, b''
@@ -84,7 +84,7 @@ class Shadowsocks(BaseProtocol):
         writer_remote.write(rauth)
         if writer_cipher_r and writer_cipher_r.ota:
             rdata = b'\x13' + packstr(host_name.encode()) + port.to_bytes(2, 'big')
-            checksum = hmac.new(writer_cipher_r.iv+writer_cipher_r.key, rdata, hashlib.sha1).digest()
+            checksum = hmac.digest(writer_cipher_r.iv+writer_cipher_r.key, rdata, hashlib.sha1)
             writer_remote.write(rdata + checksum[:10])
             self.patch_ota_writer(writer_cipher_r, writer_remote)
         else:

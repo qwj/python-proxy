@@ -145,11 +145,11 @@ def get_cipher(cipher_key):
             else:
                 o(reader_cipher.decrypt(s))
         def write(s, o=writer.write):
-            if not s:
-                return
             if not writer_cipher.iv:
                 writer_cipher.setup_iv()
                 o(writer_cipher.iv)
+            if not s:
+                return
             return o(writer_cipher.encrypt(s))
         reader.feed_data = feed_data
         writer.write = write
