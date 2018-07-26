@@ -31,6 +31,8 @@ Python3
 
 From **pproxy** 1.1.0, the minimal Python requirement is **3.3**, since old python versions are still widely used and PyPy3 only has 3.3 support currently. *Python 2* will not be supported in the future.
 
+From **proxy** 1.3.0, the minimal Python requirement is **3.7**, since **Python 3.7** make the **async**/**await**/ reserved words, we cannot make pproxy compatible with old versions anymore.
+
 Installation
 -----------
 
