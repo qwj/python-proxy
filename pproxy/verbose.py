@@ -1,6 +1,6 @@
 import time, sys, asyncio, functools
 
-b2s = lambda i: '{:.1f}{}'.format(*((i/2**30,'G') if i>=2**30 else (i/2**20,'M') if i>=2**20 else (i/1024,'K')))
+b2s = lambda i: f'{i/2**30:.1f}G' if i>=2**30 else f'{i/2**20:.1f}M' if i>=2**20 else f'{i/1024:.1f}K'
 def all_stat(stats):
     cmd = sys.stdin.readline()
     if len(stats) <= 1:
@@ -25,10 +25,10 @@ def all_stat(stats):
         print(host_name.ljust(hlen+5), '{0} / {1}'.format(*stat), '/ {}'.format(conn) if conn else '')
     print('='*70)
 
-def realtime_stat(stats):
+async def realtime_stat(stats):
     history = [(stats[:4], time.time())]
     while True:
-        yield from asyncio.sleep(1)
+        await asyncio.sleep(1)
         history.append((stats[:4], time.time()))
         i0, t0, i1, t1 = history[0][0], history[0][1], history[-1][0], history[-1][1]
         stat = [b2s((i1[i]-i0[i])/(t1-t0))+'/s' for i in range(4)] + stats[4:]
@@ -45,7 +45,7 @@ def setup(loop, args):
         tostat = (stats[0], stats.setdefault(remote_ip, {}).setdefault(host_name_2, [0]*6))
         return lambda i: lambda s: [st.__setitem__(i, st[i] + s) for st in tostat]
     args.modstat = modstat
-    asyncio.async(realtime_stat(args.stats[0]))
+    asyncio.ensure_future(realtime_stat(args.stats[0]))
     loop.add_reader(sys.stdin, functools.partial(all_stat, args.stats))
 
 
