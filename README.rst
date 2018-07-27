@@ -1,7 +1,7 @@
 python-proxy
 ===========
 
-HTTP/Socks/Shadowsocks/Redirect asynchronous tunnel proxy implemented in Python3 asyncio.
+HTTP/Socks/Shadowsocks/ShadowsocksR/Redirect asynchronous tunnel proxy implemented in Python3 asyncio.
 
 Features
 -----------
@@ -17,6 +17,7 @@ Features
 - SSL connection support to prevent Man-In-The-Middle attack.
 - Encryption cipher support to keep communication secure. (chacha20, aes-256-cfb, etc)
 - Shadowsocks OTA (One-Time-Auth_) experimental feature support.
+- SSR plugins support. (http_simple, verify_simple, tls1.2_ticket_auth, etc)
 - Basic statistics for bandwidth and total traffic by client/hostname.
 - PAC support for automatically javascript configuration.
 - Iptables NAT redirect packet tunnel support.
@@ -31,7 +32,7 @@ Python3
 
 From **pproxy** 1.1.0, the minimal Python requirement is **3.3**, since old python versions are still widely used and PyPy3 only has 3.3 support currently. *Python 2* will not be supported in the future.
 
-From **proxy** 1.3.0, the minimal Python requirement is **3.7**, since **Python 3.7** make the **async**/**await**/ reserved words, we cannot make pproxy compatible with old versions anymore.
+From **proxy** 1.3.0, the minimal Python requirement is **3.6**, since **Python 3.7** make the **async**/**await**/ reserved words, we cannot make pproxy compatible with old versions anymore.
 
 Installation
 -----------
@@ -86,7 +87,7 @@ Usage
 URI Syntax
 -----------
 
-{scheme}://[{cipher}@]{netloc}[?{rules}][#{auth}]
+{scheme}://[{cipher}@]{netloc}[/{plugins}][?{rules}][#{auth}]
 
 - scheme
     - Currently supported scheme: http, socks, ss, ssl, secure. You can use + to link multiple protocols together.
@@ -94,6 +95,7 @@ URI Syntax
         :http: http protocol
         :socks: socks5 protocol
         :ss: shadowsocks protocol
+        :ssr: shadowsocksR protocol
         :redir: redirect protocol (iptables nat)
         :ssl: communicate in (unsecured) ssl
         :secure: comnunicate in (secured) ssl
@@ -179,6 +181,9 @@ URI Syntax
 - netloc
     - It can be "hostname:port" or "/unix_domain_path". If the hostname is empty, server will listen on all interfaces.
     - Valid netloc: localhost:8080, 0.0.0.0:8123, /tmp/domain_socket, :8123
+- plugins
+    - It can be multiple plugins joined by ",". Supported plugins: plain, origin, http_simple, tls1.2_ticket_auth, verify_simple, verify_deflate
+    - Valid plugins: /tls1.2_ticket_auth,verify_simple
 - rules
     - The filename that contains regex rules
 - auth
@@ -236,6 +241,10 @@ If you want to listen in SSL, you must specify ssl certificate and private key f
     $ pproxy -i http+ssl://0.0.0.0:443 -i http://0.0.0.0:80 --ssl server.crt,server.key --pac /autopac
 
 It listen on both 80 HTTP and 443 HTTPS ports, use the specified certificate and private key files. The "--pac" enable PAC support, so you can put https://yourdomain.com/autopac in your device's auto-configure url.
+
+A ShadowsocksR example:
+
+    $ pproxy -i ssr://chacha20:mypass@0.0.0.0:443/tls1.2_ticket_auth,verify_simple
 
 An iptable NAT redirect example:
 

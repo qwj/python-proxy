@@ -25,7 +25,7 @@ setup(
     author='Qian Wenjie',
     author_email='qianwenjie@gmail.com',
     license='MIT',
-    python_requires='>=3.7',
+    python_requires='>=3.6',
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Environment :: Console',
