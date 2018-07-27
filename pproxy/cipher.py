@@ -119,7 +119,7 @@ def get_cipher(cipher_key):
     if not key:
         return 'empty key', None
     if cipher_name not in MAP and cipher_name not in MAP_PY:
-        return 'existing ciphers: {}'.format(sorted(set(MAP)|set(MAP_PY))), None
+        return f'existing ciphers: {sorted(set(MAP)|set(MAP_PY))}', None
     key, ota = key.encode(), bool(ota) if ota else False
     cipher = MAP.get(cipher_name)
     if cipher:
@@ -135,29 +135,33 @@ def get_cipher(cipher_key):
         reader_cipher, writer_cipher = cipher(key, ota=ota), cipher(key, ota=ota)
         reader_cipher._buffer = b''
         def feed_data(s, o=reader.feed_data):
+            s = reader.plugin_decrypt2(s)
             if not reader_cipher.iv:
                 s = reader_cipher._buffer + s
                 if len(s) >= reader_cipher.IV_LENGTH:
                     reader_cipher.setup_iv(s[:reader_cipher.IV_LENGTH])
-                    o(reader_cipher.decrypt(s[reader_cipher.IV_LENGTH:]))
+                    o(reader.plugin_decrypt(reader_cipher.decrypt(s[reader_cipher.IV_LENGTH:])))
                 else:
                     reader_cipher._buffer = s
             else:
-                o(reader_cipher.decrypt(s))
+                o(reader.plugin_decrypt(reader_cipher.decrypt(s)))
         def write(s, o=writer.write):
             if not writer_cipher.iv:
                 writer_cipher.setup_iv()
-                o(writer_cipher.iv)
+                o(writer.plugin_encrypt2(writer_cipher.iv))
             if not s:
                 return
-            return o(writer_cipher.encrypt(s))
+            return o(writer.plugin_encrypt2(writer_cipher.encrypt(writer.plugin_encrypt(s))))
         reader.feed_data = feed_data
         writer.write = write
         if reader._buffer:
             reader._buffer, buf = bytearray(), reader._buffer
             feed_data(buf)
         return reader_cipher, writer_cipher
+    apply_cipher.cipher = cipher
+    apply_cipher.key = key
     apply_cipher.name = cipher_name + ('-py' if cipher.PYTHON else '')
     apply_cipher.ota = ota
+    apply_cipher.plugins = []
     return None, apply_cipher
 

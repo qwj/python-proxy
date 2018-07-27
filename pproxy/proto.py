@@ -37,6 +37,21 @@ class BaseProtocol:
             writer.close()
     rchannel = channel
 
+class ShadowsocksR(BaseProtocol):
+    name = 'ssr'
+    def correct_header(self, header, auth, **kw):
+        return auth and header == auth[:1] or not auth and header and header[0] in (1, 3, 4)
+    async def parse(self, header, reader, auth, authtable, reader_cipher, **kw):
+        if auth:
+            if (await reader.read_n(len(auth)-1)) != auth[1:]:
+                raise Exception('Unauthorized SSR')
+            authtable.set_authed()
+            header = await reader.read_n(1)
+        host_name, port, data = await socks_address_process(reader, header[0])
+        return host_name, port, b''
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, initbuf, writer_cipher_r, **kw):
+        writer_remote.write(rauth + b'\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big') + initbuf)
+
 class Shadowsocks(BaseProtocol):
     name = 'ss'
     def correct_header(self, header, auth, **kw):
@@ -51,7 +66,7 @@ class Shadowsocks(BaseProtocol):
                 return None
             checksum_client = await reader.readexactly(10)
             data = await reader.readexactly(data_len)
-            checksum = hmac.digest(cipher.iv+chunk_id.to_bytes(4, 'big'), data, hashlib.sha1)
+            checksum = hmac.new(cipher.iv+chunk_id.to_bytes(4, 'big'), data, hashlib.sha1).digest()
             assert checksum[:10] == checksum_client
             chunk_id += 1
             return data
@@ -62,7 +77,7 @@ class Shadowsocks(BaseProtocol):
         def patched_write(data):
             nonlocal chunk_id
             if not data: return
-            checksum = hmac.digest(cipher.iv+chunk_id.to_bytes(4, 'big'), data, hashlib.sha1)
+            checksum = hmac.new(cipher.iv+chunk_id.to_bytes(4, 'big'), data, hashlib.sha1).digest()
             chunk_id += 1
             return write(len(data).to_bytes(2, 'big') + checksum[:10] + data)
         writer.write = patched_write
@@ -76,7 +91,7 @@ class Shadowsocks(BaseProtocol):
         host_name, port, data = await socks_address_process(reader, header[0])
         assert ota or not reader_cipher or not reader_cipher.ota, 'SS client must support OTA'
         if ota and reader_cipher:
-            checksum = hmac.digest(reader_cipher.iv+reader_cipher.key, header+data, hashlib.sha1)
+            checksum = hmac.new(reader_cipher.iv+reader_cipher.key, header+data, hashlib.sha1).digest()
             assert checksum[:10] == (await reader.read_n(10)), 'Unknown OTA checksum'
             self.patch_ota_reader(reader_cipher, reader)
         return host_name, port, b''
@@ -84,7 +99,7 @@ class Shadowsocks(BaseProtocol):
         writer_remote.write(rauth)
         if writer_cipher_r and writer_cipher_r.ota:
             rdata = b'\x13' + packstr(host_name.encode()) + port.to_bytes(2, 'big')
-            checksum = hmac.digest(writer_cipher_r.iv+writer_cipher_r.key, rdata, hashlib.sha1)
+            checksum = hmac.new(writer_cipher_r.iv+writer_cipher_r.key, rdata, hashlib.sha1).digest()
             writer_remote.write(rdata + checksum[:10])
             self.patch_ota_writer(writer_cipher_r, writer_remote)
         else:
@@ -139,7 +154,7 @@ class HTTP(BaseProtocol):
                         text = (text % dict(host=headers["Host"])).encode()
                     writer.write(f'{ver} 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\nCache-Control: max-age=900\r\nContent-Length: {len(text)}\r\n\r\n'.encode() + text)
                     return None, None, None
-            raise Exception(f'404 {method} {path}')
+            raise Exception(f'404 {method} {url.path}')
         if auth:
             pauth = headers.get('Proxy-Authorization', None)
             httpauth = 'Basic ' + base64.b64encode(auth).decode()
@@ -220,7 +235,7 @@ async def parse(protos, reader, **kw):
         return (proto,) + ret
     raise Exception(f'Unsupported protocol {header}')
 
-MAPPINGS = dict(http=HTTP(), socks=Socks(), ss=Shadowsocks(), redir=Redirect(), ssl='', secure='')
+MAPPINGS = dict(http=HTTP(), socks=Socks(), ss=Shadowsocks(), ssr=ShadowsocksR(), redir=Redirect(), ssl='', secure='')
 
 def get_protos(rawprotos):
     protos = []

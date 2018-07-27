@@ -205,11 +205,11 @@ class Blowfish(RAW):
     P = None
     @staticmethod
     def hex_pi():
-        N, n, d = 0, 0, 1
-        for N in range(1<<20):
-            xn, xd = 120*N**2 + 151*N + 47, 512*N**4 + 1024*N**3 + 712*N**2 + 194*N + 15
-            n, d = ((16 * n * xd) + (xn * d)) % (d * xd), d * xd
-            yield '%x' % (16 * n // d)
+        n, d = -3, 1
+        for xn, xd in ((120*N**2+151*N+47, 512*N**4+1024*N**3+712*N**2+194*N+15) for N in range(1<<32)):
+            n, d = n * xd + d * xn, d * xd
+            o, n = divmod(16 * n, d)
+            yield '%x' % o
     def __init__(self, key):
         if not self.P:
             pi = self.hex_pi()

@@ -2,14 +2,14 @@ import argparse, time, re, asyncio, functools, types, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "1.3.1"
+__version__ = "1.4.1"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
 
 SOCKET_TIMEOUT = 300
 PACKET_SIZE = 65536
-DUMMY = lambda s: None
+DUMMY = lambda s: s
 
 asyncio.StreamReader.read_ = lambda self: self.read(PACKET_SIZE)
 asyncio.StreamReader.read_n = lambda self, n: asyncio.wait_for(self.readexactly(n), timeout=SOCKET_TIMEOUT)
@@ -28,7 +28,14 @@ class AuthTable(object):
 async def proxy_handler(reader, writer, protos, rserver, block, cipher, verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
     try:
         remote_ip = (writer.get_extra_info('peername') or ['local'])[0]
-        reader_cipher = cipher(reader, writer)[0] if cipher else None
+        if cipher:
+            reader.plugin_decrypt = reader.plugin_decrypt2 = writer.plugin_encrypt = writer.plugin_encrypt2 = DUMMY
+            for plugin in cipher.plugins:
+                await plugin.init_client_data(reader, writer, cipher)
+                plugin.apply_cipher(reader, writer)
+            reader_cipher = cipher(reader, writer)[0]
+        else:
+            reader_cipher = None
         lproto, host_name, port, initbuf = await proto.parse(protos, reader=reader, writer=writer, authtable=AuthTable(remote_ip), reader_cipher=reader_cipher, sock=writer.get_extra_info('socket'), **kwargs)
         if host_name is None:
             writer.close()
@@ -49,7 +56,14 @@ async def proxy_handler(reader, writer, protos, rserver, block, cipher, verbose=
             raise Exception(f'Connection timeout {rserver}')
         try:
             if viaproxy:
-                writer_cipher_r = roption.cipher(reader_remote, writer_remote)[1] if roption.cipher else None
+                if roption.cipher:
+                    reader_remote.plugin_decrypt = reader_remote.plugin_decrypt2 = writer_remote.plugin_encrypt = writer_remote.plugin_encrypt2 = DUMMY
+                    for plugin in roption.cipher.plugins:
+                        await plugin.init_server_data(reader_remote, writer_remote, roption.cipher, roption.bind)
+                        plugin.apply_cipher(reader_remote, writer_remote)
+                    writer_cipher_r = roption.cipher(reader_remote, writer_remote)[1]
+                else:
+                    writer_cipher_r = None
                 await roption.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=roption.auth, host_name=host_name, port=port, initbuf=initbuf, writer_cipher_r=writer_cipher_r, sock=writer_remote.get_extra_info('socket'))
             else:
                 writer_remote.write(initbuf)
@@ -96,8 +110,6 @@ def uri_compile(uri):
         raise argparse.ArgumentTypeError(err_str)
     if 'ssl' in rawprotos or 'secure' in rawprotos:
         import ssl
-        if not hasattr(ssl, 'Purpose'):
-            raise argparse.ArgumentTypeError('ssl support is available for Python 3.4 and above')
         sslserver = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         sslclient = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
         if 'ssl' in rawprotos:
@@ -112,6 +124,15 @@ def uri_compile(uri):
         err_str, cipher = get_cipher(cipher)
         if err_str:
             raise argparse.ArgumentTypeError(err_str)
+        if url.path:
+            from pproxy.plugin import get_plugin
+            plugins = url.path.lstrip('/').split(',')
+            for name in plugins:
+                if not name: continue
+                err_str, plugin = get_plugin(name)
+                if err_str:
+                    raise argparse.ArgumentTypeError(err_str)
+                cipher.plugins.append(plugin)
     match = pattern_compile(url.query) if url.query else None
     if loc:
         host, _, port = loc.partition(':')
@@ -164,7 +185,7 @@ def main():
         verbose.setup(loop, args)
     servers = []
     for option in args.listen:
-        print('Serving on', option.bind, 'by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({})'.format(option.cipher.name) if option.cipher else '')
+        print('Serving on', option.bind, 'by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
         handler = functools.partial(functools.partial(proxy_handler, **vars(args)), **vars(option))
         try:
             server = loop.run_until_complete(option.server(handler))
