@@ -2,7 +2,7 @@ import argparse, time, re, asyncio, functools, types, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "1.4.1"
+__version__ = "1.4.2"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
@@ -25,9 +25,14 @@ class AuthTable(object):
     def set_authed(self):
         self._auth[self.remote_ip] = time.time()
 
-async def proxy_handler(reader, writer, protos, rserver, block, cipher, verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
+async def proxy_handler(reader, writer, unix, lbind, protos, rserver, block, cipher, verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
     try:
-        remote_ip = (writer.get_extra_info('peername') or ['local'])[0]
+        if not unix:
+            remote_ip = writer.get_extra_info('peername')[0]
+            server_ip = writer.get_extra_info('sockname')[0]
+        else:
+            remote_ip = server_ip = 'local'
+        local_addr = None if server_ip in ('127.0.0.1', '::1', 'local') else (server_ip, 0)
         if cipher:
             reader.plugin_decrypt = reader.plugin_decrypt2 = writer.plugin_encrypt = writer.plugin_encrypt2 = DUMMY
             for plugin in cipher.plugins:
@@ -46,10 +51,10 @@ async def proxy_handler(reader, writer, protos, rserver, block, cipher, verbose=
         viaproxy = bool(roption)
         if viaproxy:
             verbose(f'{lproto.name} {host_name}:{port} -> {roption.rproto.name} {roption.bind}')
-            wait_connect = roption.connect()
+            wait_connect = roption.connect() if roption.unix else roption.connect(local_addr=local_addr if roption.lbind == 'in' else (roption.lbind, 0) if roption.lbind else None)
         else:
             verbose(f'{lproto.name} {host_name}:{port}')
-            wait_connect = asyncio.open_connection(host=host_name, port=port)
+            wait_connect = asyncio.open_connection(host=host_name, port=port, local_addr=local_addr if lbind == 'in' else (lbind, 0) if lbind else None)
         try:
             reader_remote, writer_remote = await asyncio.wait_for(wait_connect, timeout=SOCKET_TIMEOUT)
         except asyncio.TimeoutError:
@@ -118,15 +123,17 @@ def uri_compile(uri):
     else:
         sslserver = None
         sslclient = None
+    urlpath, _, plugins = url.path.partition(',')
+    urlpath, _, lbind = urlpath.partition('@')
+    plugins = plugins.split(',') if plugins else None
     cipher, _, loc = url.netloc.rpartition('@')
     if cipher:
         from pproxy.cipher import get_cipher
         err_str, cipher = get_cipher(cipher)
         if err_str:
             raise argparse.ArgumentTypeError(err_str)
-        if url.path:
+        if plugins:
             from pproxy.plugin import get_plugin
-            plugins = url.path.lstrip('/').split(',')
             for name in plugins:
                 if not name: continue
                 err_str, plugin = get_plugin(name)
@@ -140,9 +147,9 @@ def uri_compile(uri):
         connect = functools.partial(asyncio.open_connection, host=host, port=port, ssl=sslclient)
         server = functools.partial(asyncio.start_server, host=host, port=port, ssl=sslserver)
     else:
-        connect = functools.partial(asyncio.open_unix_connection, path=url.path, ssl=sslclient, server_hostname='' if sslclient else None)
-        server = functools.partial(asyncio.start_unix_server, path=url.path, ssl=sslserver)
-    return types.SimpleNamespace(protos=protos, rproto=protos[0], cipher=cipher, auth=url.fragment.encode(), match=match, server=server, connect=connect, bind=loc or url.path, sslclient=sslclient, sslserver=sslserver, alive=True)
+        connect = functools.partial(asyncio.open_unix_connection, path=urlpath, ssl=sslclient, server_hostname='' if sslclient else None)
+        server = functools.partial(asyncio.start_unix_server, path=urlpath, ssl=sslserver)
+    return types.SimpleNamespace(protos=protos, rproto=protos[0], cipher=cipher, auth=url.fragment.encode(), match=match, server=server, connect=connect, bind=loc or urlpath, unix=not loc, lbind=lbind, sslclient=sslclient, sslserver=sslserver, alive=True)
 
 def main():
     parser = argparse.ArgumentParser(description=__description__+'\nSupported protocols: http,socks,shadowsocks,redirect', epilog='Online help: <https://github.com/qwj/python-proxy>')
