@@ -87,7 +87,7 @@ Usage
 URI Syntax
 -----------
 
-{scheme}://[{cipher}@]{netloc}[/{plugins}][?{rules}][#{auth}]
+{scheme}://[{cipher}@]{netloc}/[@{localbind}][,{plugins}][?{rules}][#{auth}]
 
 - scheme
     - Currently supported scheme: http, socks, ss, ssl, secure. You can use + to link multiple protocols together.
@@ -181,9 +181,12 @@ URI Syntax
 - netloc
     - It can be "hostname:port" or "/unix_domain_path". If the hostname is empty, server will listen on all interfaces.
     - Valid netloc: localhost:8080, 0.0.0.0:8123, /tmp/domain_socket, :8123
+- localbind
+    - It can be "@in" or @ipv4_address or @ipv6_address
+    - Valid localbind: @in, @192.168.1.15, @::1
 - plugins
     - It can be multiple plugins joined by ",". Supported plugins: plain, origin, http_simple, tls1.2_ticket_auth, verify_simple, verify_deflate
-    - Valid plugins: /tls1.2_ticket_auth,verify_simple
+    - Valid plugins: /,tls1.2_ticket_auth,verify_simple
 - rules
     - The filename that contains regex rules
 - auth
@@ -244,7 +247,11 @@ It listen on both 80 HTTP and 443 HTTPS ports, use the specified certificate and
 
 A ShadowsocksR example:
 
-    $ pproxy -i ssr://chacha20:mypass@0.0.0.0:443/tls1.2_ticket_auth,verify_simple
+    $ pproxy -i ssr://chacha20:mypass@0.0.0.0:443/,tls1.2_ticket_auth,verify_simple
+
+If you want to route the traffic by different local bind, use the @localbind syntax. For example, server has three ip interfaces: 192.168.1.15, 111.0.0.1, 112.0.0.1. You want to route traffic matched by "rule1" to 111.0.0.2 and traffic matched by "rule2" to 222.0.0.2, and the remaining traffic directly:
+
+    $ pproxy -i ss://:8000/@in -r ss://111.0.0.2:8000/@111.0.0.1?rule1 -r ss://222.0.0.2:8000/@222.0.0.1?rule2
 
 An iptable NAT redirect example:
 
