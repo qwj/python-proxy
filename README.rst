@@ -1,10 +1,31 @@
 python-proxy
-===========
+============
+
+|made-with-python| |PyPI version fury.io| |PyPI license| |HitCount| |GitHub stars|
+
+.. |made-with-python| image:: https://img.shields.io/badge/Made%20with-Python-1f425f.svg
+   :target: https://www.python.org/
+.. |PyPI version fury.io| image:: https://badge.fury.io/py/ansicolortags.svg
+   :target: https://pypi.python.org/pypi/pproxy/
+.. |PyPI license| image:: https://img.shields.io/pypi/l/ansicolortags.svg
+   :target: https://pypi.python.org/pypi/pproxy/
+.. |HitCount| image:: http://hits.dwyl.io/qwj/badges.svg
+   :target: http://hits.dwyl.io/qwj/badges
+.. |GitHub stars| image:: https://img.shields.io/github/stars/qwj/python-proxy.svg?style=social&label=Star&maxAge=2592000
+   :target: https://github.com/qwj/python-proxy/stargazers/
 
 HTTP/Socks/Shadowsocks/ShadowsocksR/Redirect asynchronous tunnel proxy implemented in Python3 asyncio.
 
+QuickStart
+----------
+
+    | $ pip3 install pproxy
+    | $ pproxy
+    | Serving on :8080 by http,socks 
+    |
+
 Features
------------
+--------
 
 - Single-thread asynchronous IO with high availability and scalability.
 - Lightweight (~500 lines) and powerful by leveraging python builtin *asyncio* library.
@@ -26,7 +47,7 @@ Features
 .. _One-Time-Auth: https://shadowsocks.org/en/spec/one-time-auth.html
 
 Python3
------------
+-------
 
 *Python 3.5* added new syntax **async def** and **await** to make asyncio programming easier. *Python 3.6* added new syntax **formatted string literals**. This tool was to demonstrate these new syntax, so the minimal Python requirement was **3.6**.
 
@@ -35,12 +56,12 @@ From **pproxy** 1.1.0, the minimal Python requirement is **3.3**, since old pyth
 From **proxy** 1.3.0, the minimal Python requirement is **3.6**, since **Python 3.7** make the **async**/**await**/ reserved words, we cannot make pproxy compatible with old versions anymore.
 
 Installation
------------
+------------
 
     | $ pip3 install pproxy
 
 PyPy3
------------
+-----
 
     | $ pypy3 -m ensurepip
     | $ pypy3 -m pip install asyncio pproxy
@@ -63,7 +84,7 @@ These are some performance comparisons between Python ciphers and C ciphers (pro
 .. _PyPy: http://pypy.org
 
 Usage
------------
+-----
 
     $ pproxy -h
     usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-b BLOCK] [-v] [--ssl SSLFILE] [--pac PAC] [--get GETS] [--version]
@@ -85,7 +106,7 @@ Usage
     Online help: <https://github.com/qwj/python-proxy>
 
 URI Syntax
------------
+----------
 
 {scheme}://[{cipher}@]{netloc}/[@{localbind}][,{plugins}][?{rules}][#{auth}]
 
@@ -193,7 +214,7 @@ URI Syntax
     - The username, colon ':', and the password
 
 Examples
------------
+--------
 
 We can define file "rules" as follow:
 
