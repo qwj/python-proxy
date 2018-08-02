@@ -1,17 +1,19 @@
 python-proxy
 ============
 
-|made-with-python| |PyPI version fury.io| |PyPI license| |HitCount| |GitHub stars|
+|made-with-python| |PyPI-version| |PyPI-license| |PyPI-format| |Hit-Count| |GitHub-stars|
 
 .. |made-with-python| image:: https://img.shields.io/badge/Made%20with-Python-1f425f.svg
    :target: https://www.python.org/
-.. |PyPI version fury.io| image:: https://badge.fury.io/py/ansicolortags.svg
+.. |PyPI-version| image:: https://badge.fury.io/py/pproxy.svg
    :target: https://pypi.python.org/pypi/pproxy/
-.. |PyPI license| image:: https://img.shields.io/pypi/l/ansicolortags.svg
+.. |PyPI-license| image:: https://img.shields.io/pypi/l/pproxy.svg
    :target: https://pypi.python.org/pypi/pproxy/
-.. |HitCount| image:: http://hits.dwyl.io/qwj/badges.svg
-   :target: http://hits.dwyl.io/qwj/badges
-.. |GitHub stars| image:: https://img.shields.io/github/stars/qwj/python-proxy.svg?style=social&label=Star&maxAge=2592000
+.. |PyPI-format| image:: https://img.shields.io/pypi/format/pproxy.svg
+   :target: https://pypi.python.org/pypi/pproxy/
+.. |Hit-Count| image:: http://hits.dwyl.io/qwj/python-proxy.svg
+   :target: https://pypi.python.org/pypi/pproxy/
+.. |GitHub-stars| image:: https://img.shields.io/github/stars/qwj/python-proxy.svg?style=social&label=Star&maxAge=2592000
    :target: https://github.com/qwj/python-proxy/stargazers/
 
 HTTP/Socks/Shadowsocks/ShadowsocksR/Redirect asynchronous tunnel proxy implemented in Python3 asyncio.
@@ -21,9 +23,15 @@ QuickStart
 
 .. code:: rst
 
-    $ pip3 install pproxy
+    $ pip3 install pproxy pycryptodome
+    Successfully installed pproxy-1.4.2 pycryptodome-3.6.4
     $ pproxy
-    Serving on :8080 by http,socks 
+    Serving on :8080 by http,socks
+    ^C
+    $ pproxy -i ss://chacha20:abc@:8080 -r ss://aes-256-cfb:123@12.34.56.78:8000 -v
+    Serving on :8080 by ss (chacha20)
+    DIRECT: 0 (0.0K/s,0.0K/s)   PROXY: 5 (5.0K/s,8.0K/s)
+
     
 Features
 --------
@@ -144,75 +152,75 @@ URI Syntax
     - Cipher is consisted by cipher name, colon ':' and cipher key.
     - Full supported cipher list: (Pure python ciphers has ciphername suffix -py)
 
-        +-----------------+------------+-----------+-------------+
-        | Cipher          | Key Length | IV Length | Score (0-5) |
-        +=================+============+===========+=============+
-        | table-py        | any        | 0         | 0 (lowest)  |
-        +-----------------+------------+-----------+-------------+
-        | rc4, rc4-py     | 16         | 0         | 0 (lowest)  |
-        +-----------------+------------+-----------+-------------+
-        | rc4-md5         | 16         | 16        | 0.5         |
-        |                 |            |           |             |
-        | rc4-md5-py      |            |           |             |
-        +-----------------+------------+-----------+-------------+ 
-        | chacha20        | 32         | 8         | 5 (highest) |
-        |                 |            |           |             |
-        | chacha20-py     |            |           |             |
-        +-----------------+------------+-----------+-------------+
-        | chacha20-ietf-py| 32         | 12        | 5           |
-        +-----------------+------------+-----------+-------------+
-        | salsa20         | 32         | 8         | 4.5         |
-        |                 |            |           |             |
-        | salsa20-py      |            |           |             |
-        +-----------------+------------+-----------+-------------+
-        | aes-128-cfb     | 16         | 16        | 3           |
-        |                 |            |           |             |
-        | aes-128-cfb-py  |            |           |             |
-        |                 |            |           |             |
-        | aes-128-cfb8-py |            |           |             |
-        |                 |            |           |             |
-        | aes-128-cfb1-py |            |           |             |
-        +-----------------+------------+-----------+-------------+
-        | aes-192-cfb     | 24         | 16        | 3.5         |
-        |                 |            |           |             |
-        | aes-192-cfb-py  |            |           |             |
-        |                 |            |           |             |
-        | aes-192-cfb8-py |            |           |             |
-        |                 |            |           |             |
-        | aes-192-cfb1-py |            |           |             |
-        +-----------------+------------+-----------+-------------+
-        | aes-256-cfb     | 32         | 16        | 4.5         |
-        |                 |            |           |             |
-        | aes-256-cfb-py  |            |           |             |
-        |                 |            |           |             |
-        | aes-256-ctr-py  |            |           |             |
-        |                 |            |           |             |
-        | aes-256-ofb-py  |            |           |             |
-        |                 |            |           |             |
-        | aes-256-cfb8-py |            |           |             |
-        |                 |            |           |             |
-        | aes-256-cfb1-py |            |           |             |
-        +-----------------+------------+-----------+-------------+
-        | camellia-256-cfb| 32         | 16        | 4           |
-        |                 |            |           |             |
-        | camellia-192-cfb| 24         | 16        | 4           |
-        |                 |            |           |             |
-        | camellia-128-cfb| 16         | 16        | 4           |
-        +-----------------+------------+-----------+-------------+
-        | bf-cfb          | 16         | 8         | 1           |
-        |                 |            |           |             |
-        | bf-cfb-py       |            |           |             |
-        +-----------------+------------+-----------+-------------+
-        | cast5-cfb       | 16         | 8         | 2.5         |
-        +-----------------+------------+-----------+-------------+
-        | des-cfb         | 8          | 8         | 1.5         |
-        +-----------------+------------+-----------+-------------+
-        | rc2-cfb-py      | 16         | 8         | 2           |
-        +-----------------+------------+-----------+-------------+
-        | idea-cfb-py     | 16         | 8         | 2.5         |
-        +-----------------+------------+-----------+-------------+
-        | seed-cfb-py     | 16         | 16        | 2           |
-        +-----------------+------------+-----------+-------------+
+      +-----------------+------------+-----------+-------------+
+      | Cipher          | Key Length | IV Length | Score (0-5) |
+      +=================+============+===========+=============+
+      | table-py        | any        | 0         | 0 (lowest)  |
+      +-----------------+------------+-----------+-------------+
+      | rc4, rc4-py     | 16         | 0         | 0 (lowest)  |
+      +-----------------+------------+-----------+-------------+
+      | rc4-md5         | 16         | 16        | 0.5         |
+      |                 |            |           |             |
+      | rc4-md5-py      |            |           |             |
+      +-----------------+------------+-----------+-------------+ 
+      | chacha20        | 32         | 8         | 5 (highest) |
+      |                 |            |           |             |
+      | chacha20-py     |            |           |             |
+      +-----------------+------------+-----------+-------------+
+      | chacha20-ietf-py| 32         | 12        | 5           |
+      +-----------------+------------+-----------+-------------+
+      | salsa20         | 32         | 8         | 4.5         |
+      |                 |            |           |             |
+      | salsa20-py      |            |           |             |
+      +-----------------+------------+-----------+-------------+
+      | aes-128-cfb     | 16         | 16        | 3           |
+      |                 |            |           |             |
+      | aes-128-cfb-py  |            |           |             |
+      |                 |            |           |             |
+      | aes-128-cfb8-py |            |           |             |
+      |                 |            |           |             |
+      | aes-128-cfb1-py |            |           |             |
+      +-----------------+------------+-----------+-------------+
+      | aes-192-cfb     | 24         | 16        | 3.5         |
+      |                 |            |           |             |
+      | aes-192-cfb-py  |            |           |             |
+      |                 |            |           |             |
+      | aes-192-cfb8-py |            |           |             |
+      |                 |            |           |             |
+      | aes-192-cfb1-py |            |           |             |
+      +-----------------+------------+-----------+-------------+
+      | aes-256-cfb     | 32         | 16        | 4.5         |
+      |                 |            |           |             |
+      | aes-256-cfb-py  |            |           |             |
+      |                 |            |           |             |
+      | aes-256-ctr-py  |            |           |             |
+      |                 |            |           |             |
+      | aes-256-ofb-py  |            |           |             |
+      |                 |            |           |             |
+      | aes-256-cfb8-py |            |           |             |
+      |                 |            |           |             |
+      | aes-256-cfb1-py |            |           |             |
+      +-----------------+------------+-----------+-------------+
+      | camellia-256-cfb| 32         | 16        | 4           |
+      |                 |            |           |             |
+      | camellia-192-cfb| 24         | 16        | 4           |
+      |                 |            |           |             |
+      | camellia-128-cfb| 16         | 16        | 4           |
+      +-----------------+------------+-----------+-------------+
+      | bf-cfb          | 16         | 8         | 1           |
+      |                 |            |           |             |
+      | bf-cfb-py       |            |           |             |
+      +-----------------+------------+-----------+-------------+
+      | cast5-cfb       | 16         | 8         | 2.5         |
+      +-----------------+------------+-----------+-------------+
+      | des-cfb         | 8          | 8         | 1.5         |
+      +-----------------+------------+-----------+-------------+
+      | rc2-cfb-py      | 16         | 8         | 2           |
+      +-----------------+------------+-----------+-------------+
+      | idea-cfb-py     | 16         | 8         | 2.5         |
+      +-----------------+------------+-----------+-------------+
+      | seed-cfb-py     | 16         | 16        | 2           |
+      +-----------------+------------+-----------+-------------+
 
     - Some pure python ciphers (aes-256-cfb1-py) is quite slow, and is not recommended to use without PyPy speedup. Try install pycryptodome_ and use C version cipher instead.
     - To enable OTA encryption with shadowsocks, add '!' immediately after cipher name.
