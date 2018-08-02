@@ -19,11 +19,12 @@ HTTP/Socks/Shadowsocks/ShadowsocksR/Redirect asynchronous tunnel proxy implement
 QuickStart
 ----------
 
-    | $ pip3 install pproxy
-    | $ pproxy
-    | Serving on :8080 by http,socks 
-    |
+.. code:: rst
 
+    $ pip3 install pproxy
+    $ pproxy
+    Serving on :8080 by http,socks 
+    
 Features
 --------
 
@@ -58,13 +59,17 @@ From **proxy** 1.3.0, the minimal Python requirement is **3.6**, since **Python 
 Installation
 ------------
 
-    | $ pip3 install pproxy
+.. code:: rst
+
+    $ pip3 install pproxy
 
 PyPy3
 -----
 
-    | $ pypy3 -m ensurepip
-    | $ pypy3 -m pip install asyncio pproxy
+.. code:: rst
+
+    $ pypy3 -m ensurepip
+    $ pypy3 -m pip install asyncio pproxy
 
 Requirement
 -----------
@@ -73,12 +78,14 @@ pycryptodome_ is an optional library to enable faster (C version) cipher encrypt
 
 These are some performance comparisons between Python ciphers and C ciphers (process 8MB data totally):
 
-    | $ python3 speed.py chacha20
-    | chacha20 0.6451280117034912
-    | $ pypy3 speed.py chacha20-py
-    | chacha20-py 1.3277630805969238
-    | $ python3 speed.py chacha20-py
-    | chacha20-py 48.85661292076111
+.. code:: rst
+
+    $ python3 speed.py chacha20
+    chacha20 0.6451280117034912
+    $ pypy3 speed.py chacha20-py
+    chacha20-py 1.3277630805969238
+    $ python3 speed.py chacha20-py
+    chacha20-py 48.85661292076111
 
 .. _pycryptodome: https://pycryptodome.readthedocs.io/en/latest/src/introduction.html
 .. _PyPy: http://pypy.org
@@ -86,11 +93,13 @@ These are some performance comparisons between Python ciphers and C ciphers (pro
 Usage
 -----
 
+.. code:: rst
+
     $ pproxy -h
     usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-b BLOCK] [-v] [--ssl SSLFILE] [--pac PAC] [--get GETS] [--version]
     
     Proxy server that can tunnel among remote servers by regex rules. Supported
-    protocols: http,socks,shadowsocks,redirect
+    protocols: http,socks,shadowsocks,shadowsocksr,redirect
     
     optional arguments:
       -h, --help     show this help message and exit
@@ -113,13 +122,21 @@ URI Syntax
 - scheme
     - Currently supported scheme: http, socks, ss, ssl, secure. You can use + to link multiple protocols together.
 
-        :http: http protocol
-        :socks: socks5 protocol
-        :ss: shadowsocks protocol
-        :ssr: shadowsocksR protocol
-        :redir: redirect protocol (iptables nat)
-        :ssl: communicate in (unsecured) ssl
-        :secure: comnunicate in (secured) ssl
+      +--------+-----------------------------+
+      | http   | http protocol               |
+      +--------+-----------------------------+
+      | socks  | socks5 protocol             |
+      +--------+-----------------------------+
+      | ss     | shadowsocks protocol        |
+      +--------+-----------------------------+
+      | ssr    | shadowsocksr (SSR) protocol |
+      +--------+-----------------------------+
+      | redir  | redirect (iptables nat)     |
+      +--------+-----------------------------+
+      | ssl    | unsecured ssl (no cert)     |
+      +--------+-----------------------------+
+      | secure | secured ssl (required cert) |
+      +--------+-----------------------------+
 
     - Valid schemes: http://, http+socks://, http+ssl://, ss+secure://, http+socks+ss://
     - Invalid schemes: ssl://, secure://
@@ -218,37 +235,45 @@ Examples
 
 We can define file "rules" as follow:
 
-    | #google domains
-    | (?:.+\.)?google.*\.com
-    | (?:.+\.)?gstatic\.com
-    | (?:.+\.)?gmail\.com
-    | (?:.+\.)?ntp\.org
-    | (?:.+\.)?glpals\.com
-    | (?:.+\.)?akamai.*\.net
-    | (?:.+\.)?ggpht\.com
-    | (?:.+\.)?android\.com
-    | (?:.+\.)?gvt1\.com
-    | (?:.+\.)?youtube.*\.com
-    | (?:.+\.)?ytimg\.com
-    | (?:.+\.)?goo\.gl
-    | (?:.+\.)?youtu\.be
-    | (?:.+\.)?google\..+
+.. code:: rst
+
+    #google domains
+    (?:.+\.)?google.*\.com
+    (?:.+\.)?gstatic\.com
+    (?:.+\.)?gmail\.com
+    (?:.+\.)?ntp\.org
+    (?:.+\.)?glpals\.com
+    (?:.+\.)?akamai.*\.net
+    (?:.+\.)?ggpht\.com
+    (?:.+\.)?android\.com
+    (?:.+\.)?gvt1\.com
+    (?:.+\.)?youtube.*\.com
+    (?:.+\.)?ytimg\.com
+    (?:.+\.)?goo\.gl
+    (?:.+\.)?youtu\.be
+    (?:.+\.)?google\..+
 
 Then start the pproxy
 
-    | $ pproxy -i http+socks://:8080 -r http://aa.bb.cc.dd:8080?rules -v
-    | http www.googleapis.com:443 -> http aa.bb.cc.dd:8080
-    | socks www.youtube.com:443 -> http aa.bb.cc.dd:8080
-    | http www.yahoo.com:80
-    | DIRECT: 1 (0.5K/s,1.2M/s)   PROXY: 2 (24.3K/s,1.9M/s)
+.. code:: rst
+
+    $ pproxy -i http+socks://:8080 -r http://aa.bb.cc.dd:8080?rules -v
+    http www.googleapis.com:443 -> http aa.bb.cc.dd:8080
+    socks www.youtube.com:443 -> http aa.bb.cc.dd:8080
+    http www.yahoo.com:80
+    DIRECT: 1 (0.5K/s,1.2M/s)   PROXY: 2 (24.3K/s,1.9M/s)
 
 With these parameters, this utility will serve incoming traffic by either http/socks5 protocol, redirect all google traffic to http proxy aa.bb.cc.dd:8080, and visit all other traffic locally.
 
 To bridge two servers, add cipher encryption to ensure data can't be intercepted. First, run pproxy locally
 
+.. code:: rst
+
     $ pproxy -i ss://:8888 -r ss://chacha20:cipher_key@aa.bb.cc.dd:12345 -v
     
 Next, run pproxy.py remotely on server "aa.bb.cc.dd"
+
+.. code:: rst
 
     $ pproxy -i ss://chacha20:cipher_key@:12345
     
@@ -256,11 +281,15 @@ By doing this, the traffic between local and aa.bb.cc.dd is encrypted by stream 
 
 A more complex example:
 
+.. code:: rst
+
     $ pproxy -i ss://salsa20!:complex_cipher_key@/tmp/pproxy_socket -r http+ssl://domain1.com:443#username:password
 
 It listen on the unix domain socket /tmp/pproxy_socket, and use cipher name salsa20, cipher key "complex_cipher_key", and enable explicit OTA encryption for shadowsocks protocol. The traffic is tunneled to remote https proxy with simple authentication. If OTA mode is not specified, server will allow both non-OTA and OTA traffic. If specified OTA mode, server only allow OTA client to connect.
 
 If you want to listen in SSL, you must specify ssl certificate and private key files by parameter "--ssl", there is an example:
+
+.. code:: rst
 
     $ pproxy -i http+ssl://0.0.0.0:443 -i http://0.0.0.0:80 --ssl server.crt,server.key --pac /autopac
 
@@ -268,16 +297,22 @@ It listen on both 80 HTTP and 443 HTTPS ports, use the specified certificate and
 
 A ShadowsocksR example:
 
+.. code:: rst
+
     $ pproxy -i ssr://chacha20:mypass@0.0.0.0:443/,tls1.2_ticket_auth,verify_simple
 
 If you want to route the traffic by different local bind, use the @localbind syntax. For example, server has three ip interfaces: 192.168.1.15, 111.0.0.1, 112.0.0.1. You want to route traffic matched by "rule1" to 111.0.0.2 and traffic matched by "rule2" to 222.0.0.2, and the remaining traffic directly:
+
+.. code:: rst
 
     $ pproxy -i ss://:8000/@in -r ss://111.0.0.2:8000/@111.0.0.1?rule1 -r ss://222.0.0.2:8000/@222.0.0.1?rule2
 
 An iptable NAT redirect example:
 
-    | $ iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 5555
-    | $ pproxy -i redir://:5555 -r http://remote_http_server:3128 -v
+.. code:: rst
+
+    $ iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 5555
+    $ pproxy -i redir://:5555 -r http://remote_http_server:3128 -v
 
 This example illustrates how to redirect all local output tcp traffic with destination port 80 to localhost port 5555 listened by **pproxy**, and then tunnel the traffic to remote http proxy.
 
