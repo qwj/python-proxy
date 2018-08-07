@@ -1,10 +1,10 @@
-import os, hashlib
+import os, hashlib, hmac
 
 class BaseCipher(object):
     PYTHON = False
     CACHE = {}
-    def __init__(self, key, ota=False):
-        if self.KEY_LENGTH > 0:
+    def __init__(self, key, ota=False, setup_key=True):
+        if self.KEY_LENGTH > 0 and setup_key:
             self.key = self.CACHE.get(b'key'+key)
             if self.key is None:
                 keybuf = []
@@ -18,6 +18,7 @@ class BaseCipher(object):
     def setup_iv(self, iv=None):
         self.iv = os.urandom(self.IV_LENGTH) if iv is None else iv
         self.setup()
+        return self
     def decrypt(self, s):
         return self.cipher.decrypt(s)
     def encrypt(self, s):
@@ -25,6 +26,52 @@ class BaseCipher(object):
     @classmethod
     def name(cls):
         return cls.__name__.replace('_Cipher', '').replace('_', '-').lower()
+
+class AEADCipher(BaseCipher):
+    def setup_iv(self, iv=None):
+        self.iv = os.urandom(self.IV_LENGTH) if iv is None else iv
+        randkey = hmac.new(self.iv, self.key, hashlib.sha1).digest()
+        blocks_needed = (self.KEY_LENGTH + len(randkey) - 1) // len(randkey)
+        okm = bytearray()
+        output_block = b''
+        for counter in range(blocks_needed):
+            output_block = hmac.new(randkey, output_block + b'ss-subkey' + bytes([counter+1]), hashlib.sha1).digest()
+            okm.extend(output_block)
+        self.key = bytes(okm[:self.KEY_LENGTH])
+        self._nonce = 0
+        self._buffer = bytearray()
+        self._declen = None
+        self.setup()
+    @property
+    def nonce(self):
+        ret = self._nonce.to_bytes(self.NONCE_LENGTH, 'little')
+        self._nonce = (self._nonce+1) & ((1<<self.NONCE_LENGTH)-1)
+        return ret
+    def decrypt(self, s):
+        self._buffer.extend(s)
+        ret = bytearray()
+        while 1:
+            if self._declen is None:
+                if len(self._buffer) < 2+self.TAG_LENGTH:
+                    break
+                self._declen = int.from_bytes(self.decrypt_and_verify(self._buffer[:2], self._buffer[2:2+self.TAG_LENGTH]), 'big')
+                assert self._declen <= 16*1024-1
+                del self._buffer[:2+self.TAG_LENGTH]
+            else:
+                if len(self._buffer) < self._declen+self.TAG_LENGTH:
+                    break
+                ret.extend(self.decrypt_and_verify(self._buffer[:self._declen], self._buffer[self._declen:self._declen+self.TAG_LENGTH]))
+                del self._buffer[:self._declen+self.TAG_LENGTH]
+                self._declen = None
+        return bytes(ret)
+    def encrypt(self, s):
+        ret = bytearray()
+        for i in range(0, len(s), 16*1024-1):
+            buf = s[i:i+16*1024-1]
+            len_chunk, len_tag = self.encrypt_and_digest(len(buf).to_bytes(2, 'big'))
+            body_chunk, body_tag = self.encrypt_and_digest(buf)
+            ret.extend(len_chunk+len_tag+body_chunk+body_tag)
+        return bytes(ret)
 
 class RC4_Cipher(BaseCipher):
     KEY_LENGTH = 16
@@ -45,6 +92,8 @@ class ChaCha20_Cipher(BaseCipher):
     def setup(self):
         from Crypto.Cipher import ChaCha20
         self.cipher = ChaCha20.new(key=self.key, nonce=self.iv)
+class ChaCha20_IETF_Cipher(ChaCha20_Cipher):
+    IV_LENGTH = 12
 
 class Salsa20_Cipher(BaseCipher):
     KEY_LENGTH = 32
@@ -60,19 +109,15 @@ class AES_256_CFB_Cipher(BaseCipher):
     def setup(self):
         from Crypto.Cipher import AES
         self.cipher = AES.new(self.key, AES.MODE_CFB, iv=self.iv, segment_size=self.SEGMENT_SIZE)
-
 class AES_128_CFB_Cipher(AES_256_CFB_Cipher):
     KEY_LENGTH = 16
-
 class AES_192_CFB_Cipher(AES_256_CFB_Cipher):
     KEY_LENGTH = 24
 
 class AES_256_CFB8_Cipher(AES_256_CFB_Cipher):
     SEGMENT_SIZE = 8
-
 class AES_192_CFB8_Cipher(AES_256_CFB8_Cipher):
     KEY_LENGTH = 24
-
 class AES_128_CFB8_Cipher(AES_256_CFB8_Cipher):
     KEY_LENGTH = 16
 
@@ -82,12 +127,38 @@ class AES_256_OFB_Cipher(BaseCipher):
     def setup(self):
         from Crypto.Cipher import AES
         self.cipher = AES.new(self.key, AES.MODE_OFB, iv=self.iv)
-
 class AES_192_OFB_Cipher(AES_256_OFB_Cipher):
     KEY_LENGTH = 24
-
 class AES_128_OFB_Cipher(AES_256_OFB_Cipher):
     KEY_LENGTH = 16
+
+class AES_256_CTR_Cipher(BaseCipher):
+    KEY_LENGTH = 32
+    IV_LENGTH = 16
+    def setup(self):
+        from Crypto.Cipher import AES
+        self.cipher = AES.new(self.key, AES.MODE_CTR, nonce=b'', initial_value=self.iv)
+class AES_192_CTR_Cipher(AES_256_CTR_Cipher):
+    KEY_LENGTH = 24
+class AES_128_CTR_Cipher(AES_256_CTR_Cipher):
+    KEY_LENGTH = 16
+
+class AES_256_GCM_Cipher(AEADCipher):
+    KEY_LENGTH = 32
+    IV_LENGTH = 32
+    NONCE_LENGTH = 12
+    TAG_LENGTH = 16
+    def decrypt_and_verify(self, buffer, tag):
+        return self.cipher_new(self.nonce).decrypt_and_verify(buffer, tag)
+    def encrypt_and_digest(self, buffer):
+        return self.cipher_new(self.nonce).encrypt_and_digest(buffer)
+    def setup(self):
+        from Crypto.Cipher import AES
+        self.cipher_new = lambda nonce: AES.new(self.key, AES.MODE_GCM, nonce=nonce, mac_len=self.TAG_LENGTH)
+class AES_192_GCM_Cipher(AES_256_GCM_Cipher):
+    KEY_LENGTH = IV_LENGTH = 24
+class AES_128_GCM_Cipher(AES_256_GCM_Cipher):
+    KEY_LENGTH = IV_LENGTH = 16
 
 class BF_CFB_Cipher(BaseCipher):
     KEY_LENGTH = 16
@@ -118,7 +189,7 @@ def get_cipher(cipher_key):
     cipher_name, ota, _ = cipher.partition('!')
     if not key:
         return 'empty key', None
-    if cipher_name not in MAP and cipher_name not in MAP_PY:
+    if cipher_name not in MAP and cipher_name not in MAP_PY and not (cipher_name.endswith('-py') and cipher_name[:-3] in MAP_PY):
         return f'existing ciphers: {sorted(set(MAP)|set(MAP_PY))}', None
     key, ota = key.encode(), bool(ota) if ota else False
     cipher = MAP.get(cipher_name)
@@ -129,6 +200,9 @@ def get_cipher(cipher_key):
             cipher = None
     if cipher is None:
         cipher = MAP_PY.get(cipher_name)
+        if cipher is None and cipher_name.endswith('-py'):
+            cipher_name = cipher_name[:-3]
+            cipher = MAP_PY.get(cipher_name)
     if cipher is None:
         return 'this cipher needs library: "pip3 install pycryptodome"', None
     def apply_cipher(reader, writer):

@@ -1,6 +1,6 @@
 import hashlib, struct, base64
 
-from pproxy.cipher import BaseCipher
+from pproxy.cipher import BaseCipher, AEADCipher
 
 # Pure Python Ciphers
 
@@ -62,8 +62,11 @@ ROL = lambda a, b: a<<b&0xffffffff|(a&0xffffffff)>>32-b
 class ChaCha20_Cipher(StreamCipher):
     KEY_LENGTH = 32
     IV_LENGTH = 8
+    def __init__(self, key, ota=False, setup_key=True, *, counter=0):
+        super().__init__(key, ota, setup_key)
+        self.counter = counter
     def core(self):
-        data = list(struct.unpack('<16I', b'expand 32-byte k' + self.key + self.iv.rjust(16, b'\x00')))
+        data = list(struct.unpack('<16I', b'expand 32-byte k' + self.key + self.counter.to_bytes(4, 'little') + self.iv.rjust(12, b'\x00')))
         ORDERS = ((0,4,8,12),(1,5,9,13),(2,6,10,14),(3,7,11,15),(0,5,10,15),(1,6,11,12),(2,7,8,13),(3,4,9,14)) * 10
         while 1:
             H = data[:]
@@ -81,6 +84,33 @@ class ChaCha20_Cipher(StreamCipher):
 
 class ChaCha20_IETF_Cipher(ChaCha20_Cipher):
     IV_LENGTH = 12
+
+def poly1305(cipher_new, nonce, ciphertext):
+    otk = cipher_new(nonce).encrypt(bytes(32))
+    mac_data = ciphertext + bytes((-len(ciphertext))%16 + 8) + len(ciphertext).to_bytes(8, 'little')
+    acc, r, s = 0, int.from_bytes(otk[:16], 'little') & 0x0ffffffc0ffffffc0ffffffc0fffffff, int.from_bytes(otk[16:], 'little')
+    for i in range(0, len(mac_data), 16):
+        acc = (r * (acc+int.from_bytes(mac_data[i:i+16]+b'\x01', 'little'))) % ((1<<130)-5)
+    return ((acc + s) & ((1<<128)-1)).to_bytes(16, 'little')
+
+class ChaCha20_IETF_POLY1305_Cipher(AEADCipher):
+    PYTHON = True
+    KEY_LENGTH = 32
+    IV_LENGTH = 32
+    NONCE_LENGTH = 12
+    TAG_LENGTH = 16
+    def process(self, s, tag=None):
+        nonce = self.nonce
+        if tag is not None:
+            assert tag == poly1305(self.cipher_new, nonce, s)
+        data = self.cipher_new(nonce, counter=1).encrypt(s)
+        if tag is None:
+            return data, poly1305(self.cipher_new, nonce, data)
+        else:
+            return data
+    encrypt_and_digest = decrypt_and_verify = process
+    def setup(self):
+        self.cipher_new = lambda nonce, counter=0: ChaCha20_IETF_Cipher(self.key, setup_key=False, counter=counter).setup_iv(nonce)
 
 class Salsa20_Cipher(StreamCipher):
     KEY_LENGTH = 32
@@ -135,7 +165,7 @@ class CFBCipher(StreamCipher):
         next_iv = int.from_bytes(self.iv, 'big')
         mask = (1 << self.IV_LENGTH*8) - 1
         while 1:
-            data = self.cipher.encrypt(next_iv.to_bytes(self.IV_LENGTH, 'big'))
+            data = self.cipher.encrypt(next_iv)
             next_iv = next_iv<<segment_bit & mask
             for i in range(segment_bit):
                 next_iv |= (yield data[i//8]>>(7-i%8)&1)<<(segment_bit-1-i)
@@ -153,7 +183,7 @@ class CTRCipher(StreamCipher):
     def core(self):
         next_iv = int.from_bytes(self.iv, 'big')
         while 1:
-            yield from self.cipher.encrypt(next_iv.to_bytes(self.IV_LENGTH, 'big'))
+            yield from self.cipher.encrypt(next_iv)
             next_iv = 0 if next_iv >= (1<<(self.IV_LENGTH*8))-1 else next_iv+1
 
 class OFBCipher(CTRCipher):
@@ -162,6 +192,41 @@ class OFBCipher(CTRCipher):
         while 1:
             data = self.cipher.encrypt(data)
             yield from data
+
+class GCMCipher(AEADCipher):
+    PYTHON = True
+    NONCE_LENGTH = 12
+    TAG_LENGTH = 16
+    def setup(self):
+        self.cipher = self.CIPHER.new(self.key)
+        self.hkey = []
+        x = int.from_bytes(self.cipher.encrypt(0), 'big')
+        for i in range(128):
+            self.hkey.insert(0, x)
+            x = (x>>1)^(0xe1<<120) if x&1 else x>>1
+    def process(self, s, tag=None):
+        def multh(y):
+            z = 0
+            for i in range(128):
+                if y & (1<<i):
+                    z ^= self.hkey[i]
+            return z
+        def ghash(d):
+            dt = d + bytes((-len(d))%16)
+            z = 0
+            for i in range(0, len(dt), 16):
+                z = multh(z^int.from_bytes(dt[i:i+16], 'big'))
+            return multh(z^(len(d)*8))
+        z = int.from_bytes(self.nonce, 'big')<<32
+        h = int.from_bytes(self.cipher.encrypt(z|1), 'big')
+        if tag is not None:
+            assert (ghash(s)^h).to_bytes(self.TAG_LENGTH, 'big') == tag
+        ret = bytes(s[i*16+j]^o for i in range((len(s)+15)//16) for j, o in enumerate(self.cipher.encrypt(z|(i+2)&((1<<32)-1))) if i*16+j < len(s))
+        if tag is None:
+            return ret, (ghash(ret)^h).to_bytes(self.TAG_LENGTH, 'big')
+        else:
+            return ret
+    encrypt_and_digest = decrypt_and_verify = process
 
 class RAW:
     CACHE = {}
@@ -191,15 +256,16 @@ class AES(RAW):
             ekey.extend(m^ekey[i-size] for i, m in enumerate(t))
         self.ekey = tuple(ekey[i*16:i*16+16] for i in range(nbr+1))
     def encrypt(self, data):
+        data = data.to_bytes(16, 'big') if isinstance(data, int) else data
         s = [data[j]^self.ekey[0][j] for j in range(16)]
         for key in self.ekey[1:-1]:
             s = [self.g2[s[a]]^self.g1[s[b]]^self.g1[s[c]]^self.g3[s[d]]^key[j] for j,a,b,c,d in self.shifts]
         return bytes([self.g1[s[self.shifts[j][1]]]^self.ekey[-1][j] for j in range(16)])
 
-for method in (CFBCipher, CFB8Cipher, CFB1Cipher, CTRCipher, OFBCipher):
+for method in (CFBCipher, CFB8Cipher, CFB1Cipher, CTRCipher, OFBCipher, GCMCipher):
     for key in (32, 24, 16):
         name = 'AES_{}_{}_Cipher'.format(key*8, method.__name__[:-6])
-        globals()[name] = type(name, (method,), dict(KEY_LENGTH=key, IV_LENGTH=16, CIPHER=AES))
+        globals()[name] = type(name, (method,), dict(KEY_LENGTH=key, IV_LENGTH=key if method is GCMCipher else 16, CIPHER=AES))
 
 class Blowfish(RAW):
     P = None
@@ -220,6 +286,7 @@ class Blowfish(RAW):
             buf = self.encrypt(buf)
             self.p[i:i+2] = struct.unpack('>II', buf)
     def encrypt(self, s):
+        s = data.to_bytes(8, 'big') if isinstance(s, int) else s
         sl, sr = struct.unpack('>II', s)
         sl ^= self.p[0]
         for i in self.p[1:17]:
@@ -250,7 +317,7 @@ class Camellia(RAW):
         e = [(q[n]<<m>>o|q[n]>>128-m+o)&(1<<64)-1 for n, m, o in ks]
         self.e = [e[i+i//7]<<64|e[i+i//7+1] if i%7==0 else e[i+i//7+1] for i in range(nr)]
     def encrypt(self, s):
-        s = int.from_bytes(s, 'big')^self.e[0]
+        s = (s if isinstance(s, int) else int.from_bytes(s, 'big'))^self.e[0]
         for idx, k in enumerate(self.e[1:-1]):
             s = s^((s&k)>>95&0xfffffffe|(s&k)>>127)<<64^((s&k)<<1&~1<<96^(s&k)>>31^s<<32|k<<32)&0xffffffff<<96 ^ ((s|k)&0xffffffff)<<32^((s|k)<<1^s>>31)&k>>31&0xfffffffe^((s|k)>>31^s>>63)&k>>63&1 if (idx+1)%7==0 else self.R(s, k)
         return (s>>64^(s&(1<<64)-1)<<64^self.e[-1]).to_bytes(16, 'big')
@@ -273,6 +340,7 @@ class IDEA(RAW):
             e.append((e[i-8&0xf8|i+1&0x7]&0x7f)<<9|e[i-8&0xf8|i+2&0x7]>>7)
         self.e = [e[i*6:i*6+6] for i in range(9)]
     def encrypt(self, s):
+        s = data.to_bytes(8, 'big') if isinstance(s, int) else s
         M = lambda a,b: (a*b-(a*b>>16)+(a*b&0xffff<a*b>>16) if a else 1-b if b else 1-a)&0xffff
         s0, s1, s2, s3 = struct.unpack('>4H', s)
         for e in self.e[:-1]:
@@ -299,6 +367,7 @@ class SEED(RAW):
             self.e.append((self.G((key0>>32)+(key1>>32)-kc), self.G(key0-key1+kc)))
             key0, key1 = (key0, (key1<<8|key1>>56)&(1<<64)-1) if i&1 else ((key0<<56|key0>>8)&(1<<64)-1, key1)
     def encrypt(self, s):
+        s = data.to_bytes(16, 'big') if isinstance(s, int) else s
         s0, s1, s2, s3 = struct.unpack('>4I', s)
         for k0, k1 in self.e:
             t0 = self.G(s2^k0^s3^k1)
@@ -324,6 +393,7 @@ class RC2(RAW):
             e[i] = self.S[e[i+1]^e[i+len(key)]]
         self.e = struct.unpack('<64H', e)
     def encrypt(self, s):
+        s = data.to_bytes(8, 'big') if isinstance(s, int) else s
         s = list(struct.unpack('<4H', s))
         for j in self.B:
             s[j&3] = s[j&3]+self.e[j]+(s[j+3&3]&s[j+2&3])+(~s[j+3&3]&s[j+1&3])<<j%4*4//3+1&0xffff|(s[j&3]+self.e[j]+(s[j+3&3]&s[j+2&3])+(~s[j+3&3]&s[j+1&3])&0xffff)>>15-j%4*4//3 if j>=0 else s[j]+self.e[s[j+3]&0x3f]

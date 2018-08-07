@@ -2,7 +2,7 @@ import argparse, time, re, asyncio, functools, types, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "1.4.2"
+__version__ = "1.5"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
@@ -152,7 +152,7 @@ def uri_compile(uri):
     return types.SimpleNamespace(protos=protos, rproto=protos[0], cipher=cipher, auth=url.fragment.encode(), match=match, server=server, connect=connect, bind=loc or urlpath, unix=not loc, lbind=lbind, sslclient=sslclient, sslserver=sslserver, alive=True)
 
 def main():
-    parser = argparse.ArgumentParser(description=__description__+'\nSupported protocols: http,socks,shadowsocks,redirect', epilog='Online help: <https://github.com/qwj/python-proxy>')
+    parser = argparse.ArgumentParser(description=__description__+'\nSupported protocols: http,socks,shadowsocks,shadowsocksr,redirect', epilog='Online help: <https://github.com/qwj/python-proxy>')
     parser.add_argument('-i', dest='listen', default=[], action='append', type=uri_compile, help='proxy server setting uri (default: http+socks://:8080/)')
     parser.add_argument('-r', dest='rserver', default=[], action='append', type=uri_compile, help='remote server setting uri (default: direct)')
     parser.add_argument('-b', dest='block', type=pattern_compile, help='block regex rules')
