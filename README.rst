@@ -1,15 +1,11 @@
 python-proxy
 ============
 
-|made-with-python| |PyPI-version| |PyPI-license| |PyPI-format| |Hit-Count| |GitHub-stars|
+|made-with-python| |PyPI-version| |Hit-Count| |GitHub-stars|
 
 .. |made-with-python| image:: https://img.shields.io/badge/Made%20with-Python-1f425f.svg
    :target: https://www.python.org/
 .. |PyPI-version| image:: https://badge.fury.io/py/pproxy.svg
-   :target: https://pypi.python.org/pypi/pproxy/
-.. |PyPI-license| image:: https://img.shields.io/pypi/l/pproxy.svg
-   :target: https://pypi.python.org/pypi/pproxy/
-.. |PyPI-format| image:: https://img.shields.io/pypi/format/pproxy.svg
    :target: https://pypi.python.org/pypi/pproxy/
 .. |Hit-Count| image:: http://hits.dwyl.io/qwj/python-proxy.svg
    :target: https://pypi.python.org/pypi/pproxy/
@@ -157,49 +153,46 @@ URI Syntax
       +=================+============+===========+=============+
       | table-py        | any        | 0         | 0 (lowest)  |
       +-----------------+------------+-----------+-------------+
-      | rc4, rc4-py     | 16         | 0         | 0 (lowest)  |
+      | rc4             | 16         | 0         | 0 (lowest)  |
       +-----------------+------------+-----------+-------------+
       | rc4-md5         | 16         | 16        | 0.5         |
-      |                 |            |           |             |
-      | rc4-md5-py      |            |           |             |
       +-----------------+------------+-----------+-------------+ 
       | chacha20        | 32         | 8         | 5 (highest) |
-      |                 |            |           |             |
-      | chacha20-py     |            |           |             |
       +-----------------+------------+-----------+-------------+
-      | chacha20-ietf-py| 32         | 12        | 5           |
+      | chacha20-ietf   | 32         | 12        | 5           |
+      +-----------------+------------+-----------+-------------+
+      | chacha20-ietf-  |            |           |             |
+      | poly1305-py     | 32         | 32        | AEAD        |
       +-----------------+------------+-----------+-------------+
       | salsa20         | 32         | 8         | 4.5         |
-      |                 |            |           |             |
-      | salsa20-py      |            |           |             |
       +-----------------+------------+-----------+-------------+
       | aes-128-cfb     | 16         | 16        | 3           |
       |                 |            |           |             |
-      | aes-128-cfb-py  |            |           |             |
+      | aes-128-cfb8    |            |           |             |
       |                 |            |           |             |
-      | aes-128-cfb8-py |            |           |             |
-      |                 |            |           |             |
-      | aes-128-cfb1-py |            |           |             |
+      | aes-128-cfb1-py |            |           | slow        |
       +-----------------+------------+-----------+-------------+
       | aes-192-cfb     | 24         | 16        | 3.5         |
       |                 |            |           |             |
-      | aes-192-cfb-py  |            |           |             |
+      | aes-192-cfb8    |            |           |             |
       |                 |            |           |             |
-      | aes-192-cfb8-py |            |           |             |
-      |                 |            |           |             |
-      | aes-192-cfb1-py |            |           |             |
+      | aes-192-cfb1-py |            |           | slow        |
       +-----------------+------------+-----------+-------------+
       | aes-256-cfb     | 32         | 16        | 4.5         |
       |                 |            |           |             |
-      | aes-256-cfb-py  |            |           |             |
+      | aes-256-ctr     |            |           |             |
       |                 |            |           |             |
-      | aes-256-ctr-py  |            |           |             |
+      | aes-256-ofb     |            |           |             |
       |                 |            |           |             |
-      | aes-256-ofb-py  |            |           |             |
+      | aes-256-cfb8    |            |           |             |
       |                 |            |           |             |
-      | aes-256-cfb8-py |            |           |             |
+      | aes-256-cfb1-py |            |           | slow        |
+      +-----------------+------------+-----------+-------------+
+      | aes-256-gcm     | 32         | 32        | AEAD        |
       |                 |            |           |             |
-      | aes-256-cfb1-py |            |           |             |
+      | aes-192-gcm     | 24         | 24        | AEAD        |
+      |                 |            |           |             |
+      | aes-128-gcm     | 16         | 16        | AEAD        |
       +-----------------+------------+-----------+-------------+
       | camellia-256-cfb| 32         | 16        | 4           |
       |                 |            |           |             |
@@ -208,8 +201,6 @@ URI Syntax
       | camellia-128-cfb| 16         | 16        | 4           |
       +-----------------+------------+-----------+-------------+
       | bf-cfb          | 16         | 8         | 1           |
-      |                 |            |           |             |
-      | bf-cfb-py       |            |           |             |
       +-----------------+------------+-----------+-------------+
       | cast5-cfb       | 16         | 8         | 2.5         |
       +-----------------+------------+-----------+-------------+
@@ -222,6 +213,8 @@ URI Syntax
       | seed-cfb-py     | 16         | 16        | 2           |
       +-----------------+------------+-----------+-------------+
 
+    - All ciphers have pure python implementations. If there is C implementation available within pycryptodome_, program will switch to C version cipher.
+    - AEAD ciphers use additional payload after each packet. The underlying protocol is different. Specifications: AEAD_.
     - Some pure python ciphers (aes-256-cfb1-py) is quite slow, and is not recommended to use without PyPy speedup. Try install pycryptodome_ and use C version cipher instead.
     - To enable OTA encryption with shadowsocks, add '!' immediately after cipher name.
 - netloc
@@ -237,6 +230,8 @@ URI Syntax
     - The filename that contains regex rules
 - auth
     - The username, colon ':', and the password
+
+.. _AEAD: http://shadowsocks.org/en/spec/AEAD-Ciphers.html
 
 Examples
 --------
