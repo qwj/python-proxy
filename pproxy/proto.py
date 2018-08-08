@@ -130,10 +130,11 @@ class Socks(BaseProtocol):
         writer.write(b'\x05\x00\x00' + header + data)
         return host_name, port, b''
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, initbuf, **kw):
-        writer_remote.write((b'\x05\x01\x02\x01' + b''.join(packstr(i) for i in rauth.split(b':', 1)) if rauth else b'\x05\x01\x00') + b'\x05\x01\x00\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big') + initbuf)
+        writer_remote.write((b'\x05\x01\x02\x01' + b''.join(packstr(i) for i in rauth.split(b':', 1)) if rauth else b'\x05\x01\x00') + b'\x05\x01\x00\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big'))
         await reader_remote.read_until(b'\x00\x05\x00\x00')
         header = (await reader_remote.read_n(1))[0]
         await reader_remote.read_n(6 if header == 1 else (18 if header == 4 else (await reader_remote.read_n(1))[0]+2))
+        writer_remote.write(initbuf)
 
 class HTTP(BaseProtocol):
     name = 'http'
@@ -174,8 +175,9 @@ class HTTP(BaseProtocol):
             newpath = url._replace(netloc='', scheme='').geturl()
             return host_name, port, f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode()
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, initbuf, **kw):
-        writer_remote.write(f'CONNECT {host_name}:{port} HTTP/1.1'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n' + initbuf)
+        writer_remote.write(f'CONNECT {host_name}:{port} HTTP/1.1'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
         await reader_remote.read_until(b'\r\n\r\n')
+        writer_remote.write(initbuf)
     async def channel(self, reader, writer, stat_bytes, *args):
         try:
             while True:
