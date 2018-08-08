@@ -8,7 +8,7 @@ class BasePlugin(object):
         pass
     async def init_server_data(self, reader, writer, cipher, raddr):
         pass
-    def apply_cipher(self, reader, writer):
+    def add_cipher(self, cipher):
         pass
     @classmethod
     def name(cls):
@@ -58,7 +58,7 @@ class Tls1__2_Ticket_Auth_Plugin(BasePlugin):
         writer.write(b"\x16\x03\x01" + packstr(b"\x01\x00" + packstr(b'\x03\x03' + addhmac(int(time.time()).to_bytes(4, 'big') + os.urandom(18)) + b"\x20" + sessionid + b"\x00\x1c\xc0\x2b\xc0\x2f\xcc\xa9\xcc\xa8\xcc\x14\xcc\x13\xc0\x0a\xc0\x14\xc0\x09\xc0\x13\x00\x9c\x00\x35\x00\x2f\x00\x0a\x01\x00" + packstr(b"\xff\x01\x00\x01\x00\x00\x00" + packstr(packstr(b"\x00" + packstr(raddr.encode()))) + b"\x00\x17\x00\x00\x00\x23" + packstr(os.urandom((random.randrange(17)+8)*16)) + b"\x00\x0d\x00\x16\x00\x14\x06\x01\x06\x03\x05\x01\x05\x03\x04\x01\x04\x03\x03\x01\x03\x03\x02\x01\x02\x03\x00\x05\x00\x05\x01\x00\x00\x00\x00\x00\x12\x00\x00\x75\x50\x00\x00\x00\x0b\x00\x02\x01\x00\x00\x0a\x00\x06\x00\x04\x00\x17\x00\x18"))))
         writer.write(addhmac(b'\x14\x03\x03\x00\x01\x01\x16\x03\x03\x00\x20' + os.urandom(22)))
 
-    def apply_cipher(self, reader, writer):
+    def add_cipher(self, cipher):
         self.buf = bytearray()
         def decrypt(s):
             self.buf.extend(s)
@@ -86,11 +86,11 @@ class Tls1__2_Ticket_Auth_Plugin(BasePlugin):
             if s:
                 ret += pack(s)
             return ret
-        reader.plugin_decrypt2 = decrypt
-        writer.plugin_encrypt2 = encrypt
+        cipher.pdecrypt2 = decrypt
+        cipher.pencrypt2 = encrypt
 
 class Verify_Simple_Plugin(BasePlugin):
-    def apply_cipher(self, reader, writer):
+    def add_cipher(self, cipher):
         self.buf = bytearray()
         def decrypt(s):
             self.buf.extend(s)
@@ -119,11 +119,11 @@ class Verify_Simple_Plugin(BasePlugin):
             if s:
                 ret += pack(s)
             return ret
-        reader.plugin_decrypt = decrypt
-        writer.plugin_encrypt = encrypt
+        cipher.pdecrypt = decrypt
+        cipher.pencrypt = encrypt
 
 class Verify_Deflate_Plugin(BasePlugin):
-    def apply_cipher(self, reader, writer):
+    def add_cipher(self, cipher):
         self.buf = bytearray()
         def decrypt(s):
             self.buf.extend(s)
@@ -146,8 +146,8 @@ class Verify_Deflate_Plugin(BasePlugin):
             if s:
                 ret += pack(s)
             return ret
-        reader.plugin_decrypt = decrypt
-        writer.plugin_encrypt = encrypt
+        cipher.pdecrypt = decrypt
+        cipher.pencrypt = encrypt
 
 PLUGIN = {cls.name(): cls for name, cls in globals().items() if name.endswith('_Plugin')}
 

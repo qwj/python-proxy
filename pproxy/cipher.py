@@ -209,32 +209,43 @@ def get_cipher(cipher_key):
             cipher = MAP_PY.get(cipher_name)
     if cipher is None:
         return 'this cipher needs library: "pip3 install pycryptodome"', None
-    def apply_cipher(reader, writer):
+    def apply_cipher(reader, writer, pdecrypt, pdecrypt2, pencrypt, pencrypt2):
         reader_cipher, writer_cipher = cipher(key, ota=ota), cipher(key, ota=ota)
         reader_cipher._buffer = b''
-        def feed_data(s, o=reader.feed_data):
-            s = reader.plugin_decrypt2(s)
+        def decrypt(s):
+            s = pdecrypt2(s)
             if not reader_cipher.iv:
                 s = reader_cipher._buffer + s
                 if len(s) >= reader_cipher.IV_LENGTH:
                     reader_cipher.setup_iv(s[:reader_cipher.IV_LENGTH])
-                    o(reader.plugin_decrypt(reader_cipher.decrypt(s[reader_cipher.IV_LENGTH:])))
+                    return pdecrypt(reader_cipher.decrypt(s[reader_cipher.IV_LENGTH:]))
                 else:
                     reader_cipher._buffer = s
+                    return b''
             else:
-                o(reader.plugin_decrypt(reader_cipher.decrypt(s)))
+                return pdecrypt(reader_cipher.decrypt(s))
+        if hasattr(reader, 'decrypts'):
+            reader.decrypts.append(decrypt)
+        else:
+            reader.decrypts = [decrypt]
+            def feed_data(s, o=reader.feed_data, p=reader.decrypts):
+                for decrypt in p:
+                    s = decrypt(s)
+                    if not s:
+                        return
+                o(s)
+            reader.feed_data = feed_data
+            if reader._buffer:
+                reader._buffer, buf = bytearray(), reader._buffer
+                feed_data(buf)
         def write(s, o=writer.write):
             if not writer_cipher.iv:
                 writer_cipher.setup_iv()
-                o(writer.plugin_encrypt2(writer_cipher.iv))
+                o(pencrypt2(writer_cipher.iv))
             if not s:
                 return
-            return o(writer.plugin_encrypt2(writer_cipher.encrypt(writer.plugin_encrypt(s))))
-        reader.feed_data = feed_data
+            return o(pencrypt2(writer_cipher.encrypt(pencrypt(s))))
         writer.write = write
-        if reader._buffer:
-            reader._buffer, buf = bytearray(), reader._buffer
-            feed_data(buf)
         return reader_cipher, writer_cipher
     apply_cipher.cipher = cipher
     apply_cipher.key = key

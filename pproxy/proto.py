@@ -35,13 +35,15 @@ class BaseProtocol:
         finally:
             stat_conn(-1)
             writer.close()
-    rchannel = channel
+
+class Direct(BaseProtocol):
+    name = 'direct'
 
 class ShadowsocksR(BaseProtocol):
     name = 'ssr'
     def correct_header(self, header, auth, **kw):
         return auth and header == auth[:1] or not auth and header and header[0] in (1, 3, 4)
-    async def parse(self, header, reader, auth, authtable, reader_cipher, **kw):
+    async def parse(self, header, reader, auth, authtable, **kw):
         if auth:
             if (await reader.read_n(len(auth)-1)) != auth[1:]:
                 raise Exception('Unauthorized SSR')
@@ -49,38 +51,47 @@ class ShadowsocksR(BaseProtocol):
             header = await reader.read_n(1)
         host_name, port, data = await socks_address_process(reader, header[0])
         return host_name, port, b''
-    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, initbuf, writer_cipher_r, **kw):
-        writer_remote.write(rauth + b'\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big') + initbuf)
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
+        writer_remote.write(rauth + b'\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big'))
 
 class Shadowsocks(BaseProtocol):
     name = 'ss'
     def correct_header(self, header, auth, **kw):
         return auth and header == auth[:1] or not auth and header and header[0] in (1, 3, 4, 17, 19, 20)
     def patch_ota_reader(self, cipher, reader):
-        chunk_id = 0
-        async def patched_read():
-            nonlocal chunk_id
-            try:
-                data_len = int.from_bytes(await reader.readexactly(2), 'big')
-            except Exception:
-                return None
-            checksum_client = await reader.readexactly(10)
-            data = await reader.readexactly(data_len)
-            checksum = hmac.new(cipher.iv+chunk_id.to_bytes(4, 'big'), data, hashlib.sha1).digest()
-            assert checksum[:10] == checksum_client
-            chunk_id += 1
-            return data
-        reader.read_ = patched_read
+        chunk_id, data_len, _buffer = 0, None, bytearray()
+        def decrypt(s):
+            nonlocal chunk_id, data_len
+            _buffer.extend(s)
+            ret = bytearray()
+            while 1:
+                if data_len is None:
+                    if len(_buffer) < 2:
+                        break
+                    data_len = int.from_bytes(_buffer[:2], 'big')
+                    del _buffer[:2]
+                else:
+                    if len(_buffer) < 10+data_len:
+                        break
+                    data = _buffer[10:10+data_len]
+                    assert _buffer[:10] == hmac.new(cipher.iv+chunk_id.to_bytes(4, 'big'), data, hashlib.sha1).digest()[:10]
+                    del _buffer[:10+data_len]
+                    data_len = None
+                    chunk_id += 1
+                    ret.extend(data)
+            return bytes(ret)
+        reader.decrypts.append(decrypt)
+        if reader._buffer:
+            reader._buffer = bytearray(decrypt(reader._buffer))
     def patch_ota_writer(self, cipher, writer):
         chunk_id = 0
-        write = writer.write
-        def patched_write(data):
+        def write(data, o=writer.write):
             nonlocal chunk_id
             if not data: return
             checksum = hmac.new(cipher.iv+chunk_id.to_bytes(4, 'big'), data, hashlib.sha1).digest()
             chunk_id += 1
-            return write(len(data).to_bytes(2, 'big') + checksum[:10] + data)
-        writer.write = patched_write
+            return o(len(data).to_bytes(2, 'big') + checksum[:10] + data)
+        writer.write = write
     async def parse(self, header, reader, auth, authtable, reader_cipher, **kw):
         if auth:
             if (await reader.read_n(len(auth)-1)) != auth[1:]:
@@ -95,7 +106,7 @@ class Shadowsocks(BaseProtocol):
             assert checksum[:10] == await reader.read_n(10), 'Unknown OTA checksum'
             self.patch_ota_reader(reader_cipher, reader)
         return host_name, port, b''
-    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, initbuf, writer_cipher_r, **kw):
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, writer_cipher_r, **kw):
         writer_remote.write(rauth)
         if writer_cipher_r and writer_cipher_r.ota:
             rdata = b'\x13' + packstr(host_name.encode()) + port.to_bytes(2, 'big')
@@ -104,7 +115,6 @@ class Shadowsocks(BaseProtocol):
             self.patch_ota_writer(writer_cipher_r, writer_remote)
         else:
             writer_remote.write(b'\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big'))
-        writer_remote.write(initbuf)
 
 class Socks(BaseProtocol):
     name = 'socks'
@@ -129,12 +139,11 @@ class Socks(BaseProtocol):
         host_name, port, data = await socks_address_process(reader, header[0])
         writer.write(b'\x05\x00\x00' + header + data)
         return host_name, port, b''
-    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, initbuf, **kw):
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
         writer_remote.write((b'\x05\x01\x02\x01' + b''.join(packstr(i) for i in rauth.split(b':', 1)) if rauth else b'\x05\x01\x00') + b'\x05\x01\x00\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big'))
         await reader_remote.read_until(b'\x00\x05\x00\x00')
         header = (await reader_remote.read_n(1))[0]
         await reader_remote.read_n(6 if header == 1 else (18 if header == 4 else (await reader_remote.read_n(1))[0]+2))
-        writer_remote.write(initbuf)
 
 class HTTP(BaseProtocol):
     name = 'http'
@@ -154,7 +163,8 @@ class HTTP(BaseProtocol):
                     if type(text) is str:
                         text = (text % dict(host=headers["Host"])).encode()
                     writer.write(f'{ver} 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\nCache-Control: max-age=900\r\nContent-Length: {len(text)}\r\n\r\n'.encode() + text)
-                    return None, None, None
+                    await writer.drain()
+                    raise Exception('Connection closed')
             raise Exception(f'404 {method} {url.path}')
         if auth:
             pauth = headers.get('Proxy-Authorization', None)
@@ -174,11 +184,10 @@ class HTTP(BaseProtocol):
             port = url.port or 80
             newpath = url._replace(netloc='', scheme='').geturl()
             return host_name, port, f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode()
-    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, initbuf, **kw):
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
         writer_remote.write(f'CONNECT {host_name}:{port} HTTP/1.1'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
         await reader_remote.read_until(b'\r\n\r\n')
-        writer_remote.write(initbuf)
-    async def channel(self, reader, writer, stat_bytes, *args):
+    async def http_channel(self, reader, writer, stat_bytes, _):
         try:
             while True:
                 data = await reader.read_()
@@ -237,7 +246,7 @@ async def parse(protos, reader, **kw):
         return (proto,) + ret
     raise Exception(f'Unsupported protocol {header}')
 
-MAPPINGS = dict(http=HTTP(), socks=Socks(), ss=Shadowsocks(), ssr=ShadowsocksR(), redir=Redirect(), ssl='', secure='')
+MAPPINGS = dict(direct=Direct(), http=HTTP(), socks=Socks(), ss=Shadowsocks(), ssr=ShadowsocksR(), redir=Redirect(), ssl='', secure='')
 
 def get_protos(rawprotos):
     protos = []

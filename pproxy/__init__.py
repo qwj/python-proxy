@@ -1,8 +1,8 @@
-import argparse, time, re, asyncio, functools, types, urllib.parse
+import argparse, time, re, asyncio, functools, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "1.5.2"
+__version__ = "1.6"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
@@ -25,59 +25,48 @@ class AuthTable(object):
     def set_authed(self):
         self._auth[self.remote_ip] = time.time()
 
+async def prepare_ciphers(cipher, reader, writer, bind=None, server_side=True):
+    if cipher:
+        cipher.pdecrypt = cipher.pdecrypt2 = cipher.pencrypt = cipher.pencrypt2 = DUMMY
+        for plugin in cipher.plugins:
+            if server_side:
+                await plugin.init_server_data(reader, writer, cipher, bind)
+            else:
+                await plugin.init_client_data(reader, writer, cipher)
+            plugin.add_cipher(cipher)
+        return cipher(reader, writer, cipher.pdecrypt, cipher.pdecrypt2, cipher.pencrypt, cipher.pencrypt2)
+    else:
+        return None, None
+
 async def proxy_handler(reader, writer, unix, lbind, protos, rserver, block, cipher, verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
     try:
-        if not unix:
-            remote_ip = writer.get_extra_info('peername')[0]
+        if unix:
+            remote_ip, server_ip, remote_text = 'local', None, 'unix_local'
+        else:
+            remote_ip, remote_port = writer.get_extra_info('peername')[0:2]
             server_ip = writer.get_extra_info('sockname')[0]
-        else:
-            remote_ip = server_ip = 'local'
-        local_addr = None if server_ip in ('127.0.0.1', '::1', 'local') else (server_ip, 0)
-        if cipher:
-            reader.plugin_decrypt = reader.plugin_decrypt2 = writer.plugin_encrypt = writer.plugin_encrypt2 = DUMMY
-            for plugin in cipher.plugins:
-                await plugin.init_client_data(reader, writer, cipher)
-                plugin.apply_cipher(reader, writer)
-            reader_cipher = cipher(reader, writer)[0]
-        else:
-            reader_cipher = None
+            remote_text = f'{remote_ip}:{remote_port}'
+        local_addr = None if server_ip in ('127.0.0.1', '::1', None) else (server_ip, 0)
+        reader_cipher, _ = await prepare_ciphers(cipher, reader, writer, server_side=False)
         lproto, host_name, port, initbuf = await proto.parse(protos, reader=reader, writer=writer, authtable=AuthTable(remote_ip), reader_cipher=reader_cipher, sock=writer.get_extra_info('socket'), **kwargs)
-        if host_name is None:
-            writer.close()
-            return
         if block and block(host_name):
             raise Exception('BLOCK ' + host_name)
         roption = next(filter(lambda o: o.alive and (not o.match or o.match(host_name)), rserver), None)
-        viaproxy = bool(roption)
-        if viaproxy:
-            verbose(f'{lproto.name} {host_name}:{port} -> {roption.rproto.name} {roption.bind}')
-            wait_connect = roption.connect() if roption.unix else roption.connect(local_addr=local_addr if roption.lbind == 'in' else (roption.lbind, 0) if roption.lbind else None)
-        else:
-            verbose(f'{lproto.name} {host_name}:{port}')
-            wait_connect = asyncio.open_connection(host=host_name, port=port, local_addr=local_addr if lbind == 'in' else (lbind, 0) if lbind else None)
+        verbose(f'{lproto.name} {remote_text}' + roption.logtext(host_name, port))
         try:
-            reader_remote, writer_remote = await asyncio.wait_for(wait_connect, timeout=SOCKET_TIMEOUT)
+            reader_remote, writer_remote = await asyncio.wait_for(roption.open_connection(host_name, port, local_addr, lbind), timeout=SOCKET_TIMEOUT)
         except asyncio.TimeoutError:
-            raise Exception(f'Connection timeout {rserver}')
+            raise Exception(f'Connection timeout {roption.bind}')
         try:
-            if viaproxy:
-                if roption.cipher:
-                    reader_remote.plugin_decrypt = reader_remote.plugin_decrypt2 = writer_remote.plugin_encrypt = writer_remote.plugin_encrypt2 = DUMMY
-                    for plugin in roption.cipher.plugins:
-                        await plugin.init_server_data(reader_remote, writer_remote, roption.cipher, roption.bind)
-                        plugin.apply_cipher(reader_remote, writer_remote)
-                    writer_cipher_r = roption.cipher(reader_remote, writer_remote)[1]
-                else:
-                    writer_cipher_r = None
-                await roption.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=roption.auth, host_name=host_name, port=port, initbuf=initbuf, writer_cipher_r=writer_cipher_r, sock=writer_remote.get_extra_info('socket'))
-            else:
-                writer_remote.write(initbuf)
+            await roption.prepare_connection(reader_remote, writer_remote, host_name, port)
+            writer_remote.write(initbuf)
         except Exception:
             writer_remote.close()
             raise Exception('Unknown remote protocol')
         m = modstat(remote_ip, host_name)
-        asyncio.ensure_future(lproto.rchannel(reader_remote, writer, m(2+viaproxy), m(4+viaproxy)))
-        asyncio.ensure_future(lproto.channel(reader, writer_remote, m(viaproxy), DUMMY))
+        lchannel = lproto.http_channel if initbuf else lproto.channel
+        asyncio.ensure_future(lproto.channel(reader_remote, writer, m(2+roption.direct), m(4+roption.direct)))
+        asyncio.ensure_future(lchannel(reader, writer_remote, m(roption.direct), DUMMY))
     except Exception as ex:
         if not isinstance(ex, asyncio.TimeoutError) and not str(ex).startswith('Connection closed'):
             verbose(f'{str(ex) or "Unsupported protocol"} from {remote_ip}')
@@ -88,15 +77,17 @@ async def check_server_alive(interval, rserver, verbose):
     while True:
         await asyncio.sleep(interval)
         for remote in rserver:
+            if remote.direct:
+                continue
             try:
-                reader, writer = await asyncio.wait_for(remote.connect(), timeout=SOCKET_TIMEOUT)
+                _, writer = await asyncio.wait_for(remote.open_connection(None, None, None, None), timeout=SOCKET_TIMEOUT)
             except Exception as ex:
                 if remote.alive:
-                    verbose(f'{remote.bind} -> OFFLINE')
+                    verbose(f'{remote.rproto.name} {remote.bind} -> OFFLINE')
                     remote.alive = False
                 continue
             if not remote.alive:
-                verbose(f'{remote.bind} -> ONLINE')
+                verbose(f'{remote.rproto.name} {remote.bind} -> ONLINE')
                 remote.alive = True
             try:
                 writer.close()
@@ -107,64 +98,135 @@ def pattern_compile(filename):
     with open(filename) as f:
         return re.compile('(:?'+''.join('|'.join(i.strip() for i in f if i.strip() and not i.startswith('#')))+')$').match
 
-def uri_compile(uri):
-    url = urllib.parse.urlparse(uri)
-    rawprotos = url.scheme.split('+')
-    err_str, protos = proto.get_protos(rawprotos)
-    if err_str:
-        raise argparse.ArgumentTypeError(err_str)
-    if 'ssl' in rawprotos or 'secure' in rawprotos:
-        import ssl
-        sslserver = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        sslclient = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-        if 'ssl' in rawprotos:
-            sslclient.check_hostname = False
-            sslclient.verify_mode = ssl.CERT_NONE
-    else:
-        sslserver = None
-        sslclient = None
-    urlpath, _, plugins = url.path.partition(',')
-    urlpath, _, lbind = urlpath.partition('@')
-    plugins = plugins.split(',') if plugins else None
-    cipher, _, loc = url.netloc.rpartition('@')
-    if cipher:
-        from pproxy.cipher import get_cipher
-        err_str, cipher = get_cipher(cipher)
+class ProxyURI(object):
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+    def logtext(self, host, port):
+        if self.direct:
+            return f' -> {host}:{port}'
+        else:
+            return f' -> {self.rproto.name} {self.bind}' + self.relay.logtext(host, port)
+    def open_connection(self, host, port, local_addr, lbind):
+        if self.direct:
+            local_addr = local_addr if lbind == 'in' else (lbind, 0) if lbind else None
+            return asyncio.open_connection(host=host, port=port, local_addr=local_addr)
+        elif self.unix:
+            return asyncio.open_unix_connection(path=self.bind, ssl=self.sslclient, server_hostname='' if self.sslclient else None)
+        else:
+            local_addr = local_addr if self.lbind == 'in' else (self.lbind, 0) if self.lbind else None
+            return asyncio.open_connection(host=self.host_name, port=self.port, ssl=self.sslclient, local_addr=local_addr)
+    async def prepare_connection(self, reader_remote, writer_remote, host, port):
+        if not self.direct:
+            _, writer_cipher_r = await prepare_ciphers(self.cipher, reader_remote, writer_remote, self.bind)
+            whost, wport = (host, port) if self.relay.direct else (self.relay.host_name, self.relay.port)
+            await self.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=self.auth, host_name=whost, port=wport, writer_cipher_r=writer_cipher_r, sock=writer_remote.get_extra_info('socket'))
+            await self.relay.prepare_connection(reader_remote, writer_remote, host, port)
+    def start_server(self, handler):
+        if self.unix:
+            return asyncio.start_unix_server(handler, path=self.bind, ssl=self.sslserver)
+        else:
+            return asyncio.start_server(handler, host=self.host_name, port=self.port, ssl=self.sslserver)
+    @classmethod
+    def compile_relay(cls, uri):
+        tail = cls.DIRECT
+        for urip in reversed(uri.split('__')):
+            tail = cls.compile(urip, tail)
+        return tail
+    @classmethod
+    def compile(cls, uri, relay=None):
+        url = urllib.parse.urlparse(uri)
+        rawprotos = url.scheme.split('+')
+        err_str, protos = proto.get_protos(rawprotos)
         if err_str:
             raise argparse.ArgumentTypeError(err_str)
-        if plugins:
-            from pproxy.plugin import get_plugin
-            for name in plugins:
-                if not name: continue
-                err_str, plugin = get_plugin(name)
-                if err_str:
-                    raise argparse.ArgumentTypeError(err_str)
-                cipher.plugins.append(plugin)
-    match = pattern_compile(url.query) if url.query else None
-    if loc:
-        host, _, port = loc.partition(':')
-        port = int(port) if port else 8080
-        connect = functools.partial(asyncio.open_connection, host=host, port=port, ssl=sslclient)
-        server = functools.partial(asyncio.start_server, host=host, port=port, ssl=sslserver)
-    else:
-        connect = functools.partial(asyncio.open_unix_connection, path=urlpath, ssl=sslclient, server_hostname='' if sslclient else None)
-        server = functools.partial(asyncio.start_unix_server, path=urlpath, ssl=sslserver)
-    return types.SimpleNamespace(protos=protos, rproto=protos[0], cipher=cipher, auth=url.fragment.encode(), match=match, server=server, connect=connect, bind=loc or urlpath, unix=not loc, lbind=lbind, sslclient=sslclient, sslserver=sslserver, alive=True)
+        if 'ssl' in rawprotos or 'secure' in rawprotos:
+            import ssl
+            sslserver = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+            sslclient = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+            if 'ssl' in rawprotos:
+                sslclient.check_hostname = False
+                sslclient.verify_mode = ssl.CERT_NONE
+        else:
+            sslserver = None
+            sslclient = None
+        urlpath, _, plugins = url.path.partition(',')
+        urlpath, _, lbind = urlpath.partition('@')
+        plugins = plugins.split(',') if plugins else None
+        cipher, _, loc = url.netloc.rpartition('@')
+        if cipher:
+            from pproxy.cipher import get_cipher
+            err_str, cipher = get_cipher(cipher)
+            if err_str:
+                raise argparse.ArgumentTypeError(err_str)
+            if plugins:
+                from pproxy.plugin import get_plugin
+                for name in plugins:
+                    if not name: continue
+                    err_str, plugin = get_plugin(name)
+                    if err_str:
+                        raise argparse.ArgumentTypeError(err_str)
+                    cipher.plugins.append(plugin)
+        match = pattern_compile(url.query) if url.query else None
+        if loc:
+            host_name, _, port = loc.partition(':')
+            port = int(port) if port else 8080
+        else:
+            host_name = port = None
+        return ProxyURI(protos=protos, rproto=protos[0], cipher=cipher, auth=url.fragment.encode(), match=match, bind=loc or urlpath, host_name=host_name, port=port, unix=not loc, lbind=lbind, sslclient=sslclient, sslserver=sslserver, alive=True, direct='direct' in rawprotos, relay=relay)
+ProxyURI.DIRECT = ProxyURI(direct=True, relay=None, alive=True, match=None)
+
+async def test_url(url, rserver):
+    url = urllib.parse.urlparse(url)
+    assert url.scheme in ('http', ), f'Unknown scheme {url.scheme}'
+    host_name, _, port = url.netloc.partition(':')
+    port = int(port) if port else 80 if url.scheme == 'http' else 443
+    initbuf = f'GET {url.path or "/"} HTTP/1.1\r\nHost: {host_name}\r\nUser-Agent: pproxy-{__version__}\r\nConnection: close\r\n\r\n'.encode()
+    for roption in rserver:
+        if roption.direct:
+            continue
+        print(f'============ {roption.bind} ============')
+        try:
+            reader, writer = await asyncio.wait_for(roption.open_connection(host_name, port, None, None), timeout=SOCKET_TIMEOUT)
+        except asyncio.TimeoutError:
+            raise Exception(f'Connection timeout {rserver}')
+        try:
+            await roption.prepare_connection(reader, writer, host_name, port)
+        except Exception:
+            writer.close()
+            raise Exception('Unknown remote protocol')
+        writer.write(initbuf)
+        headers = await reader.read_until(b'\r\n\r\n')
+        print(headers.decode()[:-4])
+        print(f'--------------------------------')
+        body = bytearray()
+        while 1:
+            s = await reader.read_()
+            if not s:
+                break
+            body.extend(s)
+        print(body.decode())
+    print(f'============ success ============')
 
 def main():
     parser = argparse.ArgumentParser(description=__description__+'\nSupported protocols: http,socks,shadowsocks,shadowsocksr,redirect', epilog='Online help: <https://github.com/qwj/python-proxy>')
-    parser.add_argument('-i', dest='listen', default=[], action='append', type=uri_compile, help='proxy server setting uri (default: http+socks://:8080/)')
-    parser.add_argument('-r', dest='rserver', default=[], action='append', type=uri_compile, help='remote server setting uri (default: direct)')
+    parser.add_argument('-i', dest='listen', default=[], action='append', type=ProxyURI.compile, help='proxy server setting uri (default: http+socks://:8080/)')
+    parser.add_argument('-r', dest='rserver', default=[], action='append', type=ProxyURI.compile_relay, help='remote server setting uri (default: direct)')
     parser.add_argument('-b', dest='block', type=pattern_compile, help='block regex rules')
     parser.add_argument('-a', dest='alived', default=0, type=int, help='interval to check remote alive (default: no check)')
     parser.add_argument('-v', dest='v', action='store_true', help='print verbose output')
     parser.add_argument('--ssl', dest='sslfile', help='certfile[,keyfile] if server listen in ssl mode')
     parser.add_argument('--pac', dest='pac', help='http PAC path')
-    parser.add_argument('--get', dest='gets', default=[], action='append', help='http custom path/file')
+    parser.add_argument('--get', dest='gets', default=[], action='append', help='http custom {path,file}')
+    parser.add_argument('--test', dest='testurl', help='test this url for all remote proxies and exit')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
+    if args.testurl:
+        asyncio.run(test_url(args.testurl, args.rserver))
+        return
     if not args.listen:
-        args.listen.append(uri_compile('http+socks://:8080/'))
+        args.listen.append(ProxyURI.compile_relay('http+socks://:8080/'))
+    if not args.rserver or args.rserver[-1].match:
+        args.rserver.append(ProxyURI.DIRECT)
     args.httpget = {}
     if args.pac:
         pactext = 'function FindProxyForURL(u,h){' + (f'var b=/^(:?{args.block.__self__.pattern})$/i;if(b.test(h))return "";' if args.block else '')
@@ -195,7 +257,7 @@ def main():
         print('Serving on', option.bind, 'by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
         handler = functools.partial(proxy_handler, **vars(args), **vars(option))
         try:
-            server = loop.run_until_complete(option.server(handler))
+            server = loop.run_until_complete(option.start_server(handler))
             servers.append(server)
         except Exception as ex:
             print('Start server failed.\n\t==>', ex)
