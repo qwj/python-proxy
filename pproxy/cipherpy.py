@@ -264,7 +264,7 @@ class AES(RAW):
 
 for method in (CFBCipher, CFB8Cipher, CFB1Cipher, CTRCipher, OFBCipher, GCMCipher):
     for key in (32, 24, 16):
-        name = 'AES_{}_{}_Cipher'.format(key*8, method.__name__[:-6])
+        name = f'AES_{key*8}_{method.__name__[:-6]}_Cipher'
         globals()[name] = type(name, (method,), dict(KEY_LENGTH=key, IV_LENGTH=key if method is GCMCipher else 16, CIPHER=AES))
 
 class Blowfish(RAW):
@@ -361,8 +361,7 @@ class SEED(RAW):
     S1 = base64.b64decode(b'OOgtps/es7ivYFXHRG9rW8NiM7UpoOKn05ERBhy8NkvviGyoF8QW9MJF4dY/PY6YKE72PqX5Dd/YK2Z6Jy/xckLUQcBzZ6yL962AH8osqjTSC+7pXZQY+FeuCMUTzYa5/33BMfWKarHRINcCIgRocQfbnZlhvuZZ3VGQ3Jqjq9CBD0ca4+yNv5Z7XKKhYyNNyJ6cOgwuum6fWvKS80l4zBX7cHV/NRADZG3GdNW06gl2Gf5AEuC9BfoB8CpeqVZDhRSJm7DlSHmX/B6CIYwbX3dUsh0lTwBG7VhS637ayf0wlWU8tuS7fA5QOSYyhGmTN+ckpMtTCofZTIOPzjtKtw==')
     G = lambda self, x, M=b'\xfc\xf3\xcf\x3f': sum((self.S0[x&0xff]&M[i]^self.S1[x>>8&0xff]&M[i+1&3]^self.S0[x>>16&0xff]&M[i+2&3]^self.S1[x>>24&0xff]&M[i+3&3])<<i*8 for i in range(4))
     def __init__(self, key):
-        self.e = []
-        key0, key1 = struct.unpack('>QQ', key)
+        self.e, key0, key1 = [], *struct.unpack('>QQ', key)
         for i, kc in enumerate((0x9e3779b9, 0x3c6ef373, 0x78dde6e6, 0xf1bbcdcc, 0xe3779b99, 0xc6ef3733, 0x8dde6e67, 0x1bbcdccf, 0x3779b99e, 0x6ef3733c, 0xdde6e678, 0xbbcdccf1, 0x779b99e3, 0xef3733c6, 0xde6e678d, 0xbcdccf1b)):
             self.e.append((self.G((key0>>32)+(key1>>32)-kc), self.G(key0-key1+kc)))
             key0, key1 = (key0, (key1<<8|key1>>56)&(1<<64)-1) if i&1 else ((key0<<56|key0>>8)&(1<<64)-1, key1)

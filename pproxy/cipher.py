@@ -28,6 +28,7 @@ class BaseCipher(object):
         return cls.__name__.replace('_Cipher', '').replace('_', '-').lower()
 
 class AEADCipher(BaseCipher):
+    PACKET_LIMIT = 16*1024-1
     def setup_iv(self, iv=None):
         self.iv = os.urandom(self.IV_LENGTH) if iv is None else iv
         randkey = hmac.new(self.iv, self.key, hashlib.sha1).digest()
@@ -50,24 +51,27 @@ class AEADCipher(BaseCipher):
     def decrypt(self, s):
         self._buffer.extend(s)
         ret = bytearray()
-        while 1:
-            if self._declen is None:
-                if len(self._buffer) < 2+self.TAG_LENGTH:
-                    break
-                self._declen = int.from_bytes(self.decrypt_and_verify(self._buffer[:2], self._buffer[2:2+self.TAG_LENGTH]), 'big')
-                assert self._declen <= 16*1024-1
-                del self._buffer[:2+self.TAG_LENGTH]
-            else:
-                if len(self._buffer) < self._declen+self.TAG_LENGTH:
-                    break
-                ret.extend(self.decrypt_and_verify(self._buffer[:self._declen], self._buffer[self._declen:self._declen+self.TAG_LENGTH]))
-                del self._buffer[:self._declen+self.TAG_LENGTH]
-                self._declen = None
+        try:
+            while 1:
+                if self._declen is None:
+                    if len(self._buffer) < 2+self.TAG_LENGTH:
+                        break
+                    self._declen = int.from_bytes(self.decrypt_and_verify(self._buffer[:2], self._buffer[2:2+self.TAG_LENGTH]), 'big')
+                    assert self._declen <= self.PACKET_LIMIT
+                    del self._buffer[:2+self.TAG_LENGTH]
+                else:
+                    if len(self._buffer) < self._declen+self.TAG_LENGTH:
+                        break
+                    ret.extend(self.decrypt_and_verify(self._buffer[:self._declen], self._buffer[self._declen:self._declen+self.TAG_LENGTH]))
+                    del self._buffer[:self._declen+self.TAG_LENGTH]
+                    self._declen = None
+        except Exception:
+            return bytes([0])
         return bytes(ret)
     def encrypt(self, s):
         ret = bytearray()
-        for i in range(0, len(s), 16*1024-1):
-            buf = s[i:i+16*1024-1]
+        for i in range(0, len(s), self.PACKET_LIMIT):
+            buf = s[i:i+self.PACKET_LIMIT]
             len_chunk, len_tag = self.encrypt_and_digest(len(buf).to_bytes(2, 'big'))
             body_chunk, body_tag = self.encrypt_and_digest(buf)
             ret.extend(len_chunk+len_tag+body_chunk+body_tag)

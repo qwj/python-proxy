@@ -2,7 +2,7 @@ import argparse, time, re, asyncio, functools, types, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "1.5"
+__version__ = "1.5.1"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
@@ -92,11 +92,11 @@ async def check_server_alive(interval, rserver, verbose):
                 reader, writer = await asyncio.wait_for(remote.connect(), timeout=SOCKET_TIMEOUT)
             except Exception as ex:
                 if remote.alive:
-                    verbose(f'{remote.bind}: OFFLINE')
+                    verbose(f'{remote.bind} -> OFFLINE')
                     remote.alive = False
                 continue
             if not remote.alive:
-                verbose(f'{remote.bind}: ONLINE')
+                verbose(f'{remote.bind} -> ONLINE')
                 remote.alive = True
             try:
                 writer.close()
@@ -156,7 +156,7 @@ def main():
     parser.add_argument('-i', dest='listen', default=[], action='append', type=uri_compile, help='proxy server setting uri (default: http+socks://:8080/)')
     parser.add_argument('-r', dest='rserver', default=[], action='append', type=uri_compile, help='remote server setting uri (default: direct)')
     parser.add_argument('-b', dest='block', type=pattern_compile, help='block regex rules')
-    parser.add_argument('-a', dest='alive', default=0, type=int, help='interval to check remote alive (default: no check)')
+    parser.add_argument('-a', dest='alived', default=0, type=int, help='interval to check remote alive (default: no check)')
     parser.add_argument('-v', dest='v', action='store_true', help='print verbose output')
     parser.add_argument('--ssl', dest='sslfile', help='certfile[,keyfile] if server listen in ssl mode')
     parser.add_argument('--pac', dest='pac', help='http PAC path')
@@ -193,15 +193,15 @@ def main():
     servers = []
     for option in args.listen:
         print('Serving on', option.bind, 'by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
-        handler = functools.partial(functools.partial(proxy_handler, **vars(args)), **vars(option))
+        handler = functools.partial(proxy_handler, **vars(args), **vars(option))
         try:
             server = loop.run_until_complete(option.server(handler))
             servers.append(server)
         except Exception as ex:
             print('Start server failed.\n\t==>', ex)
     if servers:
-        if args.alive > 0 and args.rserver:
-            asyncio.ensure_future(check_server_alive(args.alive, args.rserver, args.verbose if args.v else DUMMY))
+        if args.alived > 0 and args.rserver:
+            asyncio.ensure_future(check_server_alive(args.alived, args.rserver, args.verbose if args.v else DUMMY))
         try:
             loop.run_forever()
         except KeyboardInterrupt:

@@ -61,7 +61,7 @@ class Shadowsocks(BaseProtocol):
         async def patched_read():
             nonlocal chunk_id
             try:
-                data_len = int.from_bytes((await reader.readexactly(2)), 'big')
+                data_len = int.from_bytes(await reader.readexactly(2), 'big')
             except Exception:
                 return None
             checksum_client = await reader.readexactly(10)
@@ -92,7 +92,7 @@ class Shadowsocks(BaseProtocol):
         assert ota or not reader_cipher or not reader_cipher.ota, 'SS client must support OTA'
         if ota and reader_cipher:
             checksum = hmac.new(reader_cipher.iv+reader_cipher.key, header+data, hashlib.sha1).digest()
-            assert checksum[:10] == (await reader.read_n(10)), 'Unknown OTA checksum'
+            assert checksum[:10] == await reader.read_n(10), 'Unknown OTA checksum'
             self.patch_ota_reader(reader_cipher, reader)
         return host_name, port, b''
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, initbuf, writer_cipher_r, **kw):
@@ -140,7 +140,7 @@ class HTTP(BaseProtocol):
     def correct_header(self, header, **kw):
         return header and header.isalpha()
     async def parse(self, header, reader, writer, auth, authtable, httpget, **kw):
-        lines = header + (await reader.read_until(b'\r\n\r\n'))
+        lines = header + await reader.read_until(b'\r\n\r\n')
         headers = lines[:-4].decode().split('\r\n')
         method, path, ver = HTTP_LINE.match(headers.pop(0)).groups()
         lines = '\r\n'.join(i for i in headers if not i.startswith('Proxy-'))
