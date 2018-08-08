@@ -19,14 +19,23 @@ QuickStart
 
 .. code:: rst
 
-    $ pip3 install pproxy pycryptodome
-    Successfully installed pproxy-1.4.2 pycryptodome-3.6.4
+    $ pip3 install pproxy
+    Successfully installed pproxy-1.6
     $ pproxy
     Serving on :8080 by http,socks
     ^C
-    $ pproxy -i ss://chacha20:abc@:8080 -r ss://aes-256-cfb:123@12.34.56.78:8000 -v
+    $ pproxy -i ss://chacha20:abc@:8080
+    Serving on :8080 by ss (chacha20-py)
+
+Optional: (better performance with C ciphers)
+
+.. code:: rst
+
+    $ pip3 install pycryptodome
+    Successfully installed pycryptodome-3.6.4
+    $ pproxy -i ss://chacha20:abc@:8080
     Serving on :8080 by ss (chacha20)
-    DIRECT: 0 (0.0K/s,0.0K/s)   PROXY: 5 (5.0K/s,8.0K/s)
+
 
     
 Features
@@ -34,20 +43,21 @@ Features
 
 - Single-thread asynchronous IO with high availability and scalability.
 - Lightweight (~500 lines) and powerful by leveraging python builtin *asyncio* library.
-- No additional library is required. All codes are in Pure Python.
-- Automatically detect incoming traffic: HTTP/Socks/Shadowsocks/Redirect.
-- Specify multiple remote servers for outcoming traffic: HTTP/Socks/Shadowsocks.
-- Unix domain socket support for communicating locally.
-- Basic authentication support for all three protocols.
-- Regex pattern file support to route/block by hostname matching.
-- SSL connection support to prevent Man-In-The-Middle attack.
-- Encryption cipher support to keep communication secure. (chacha20, aes-256-cfb, etc)
-- Shadowsocks OTA (One-Time-Auth_) experimental feature support.
-- SSR plugins support. (http_simple, verify_simple, tls1.2_ticket_auth, etc)
-- Basic statistics for bandwidth and total traffic by client/hostname.
-- PAC support for automatically javascript configuration.
-- Iptables NAT redirect packet tunnel support.
-- PyPy3.3 v5.5 support to enable JIT speedup.
+- No additional library is required. All codes are in pure Python.
+- Auto-detect incoming traffic.
+- Tunnel by remote proxy servers.
+- Tunnel and relay with several layers.
+- Unix domain path socket.
+- Basic authentication for all protocols.
+- Regex pattern file to route/block by hostname.
+- SSL client/server support.
+- Built-in encryption ciphers. (chacha20, aes-256-cfb, etc)
+- Shadowsocks OTA (One-Time-Auth_).
+- SSR plugins. (http_simple, verify_simple, tls1.2_ticket_auth, etc)
+- Statistics by bandwidth and traffic.
+- PAC support for javascript configuration.
+- Iptables NAT redirect packet tunnel.
+- PyPy3 support with JIT speedup.
 
 .. _One-Time-Auth: https://shadowsocks.org/en/spec/one-time-auth.html
 
@@ -58,14 +68,7 @@ Python3
 
 From **pproxy** 1.1.0, the minimal Python requirement is **3.3**, since old python versions are still widely used and PyPy3 only has 3.3 support currently. *Python 2* will not be supported in the future.
 
-From **proxy** 1.3.0, the minimal Python requirement is **3.6**, since **Python 3.7** make the **async**/**await**/ reserved words, we cannot make pproxy compatible with old versions anymore.
-
-Installation
-------------
-
-.. code:: rst
-
-    $ pip3 install pproxy
+From **proxy** 1.3.0, the minimal Python requirement is **3.6**, since **Python 3.7** make the **async**/**await**/ reserved words, we cannot make pproxy compatible with older versions.
 
 PyPy3
 -----
@@ -78,18 +81,17 @@ PyPy3
 Requirement
 -----------
 
-pycryptodome_ is an optional library to enable faster (C version) cipher encryption. **pproxy** has many built-in pure python ciphers without need to install pycryptodome_. They are lightweight and stable, but a little slow. After speed up with PyPy_, the pure python ciphers can achieve similar performance as pycryptodome_ (C version). If you care about cipher performance and don't run in PyPy_, just install pycryptodome_ to enable faster ciphers.
+pycryptodome_ is an optional library to enable faster (C version) cipher. **pproxy** has many built-in pure python ciphers. They are lightweight and stable, but slower than C ciphers. After speedup with PyPy_, the pure python ciphers can get similar performance as C version. If the performance is important and don't have PyPy_, install pycryptodome_ instead.
 
-These are some performance comparisons between Python ciphers and C ciphers (process 8MB data totally):
+These are some performance benchmarks between Python and C ciphers (dataset: 8M):
 
-.. code:: rst
-
-    $ python3 speed.py chacha20
-    chacha20 0.6451280117034912
-    $ pypy3 speed.py chacha20-py
-    chacha20-py 1.3277630805969238
-    $ python3 speed.py chacha20-py
-    chacha20-py 48.85661292076111
++---------------------+----------------+
+| chacha20-c          | 0.64 secs      |
++---------------------+----------------+
+| chacha20-py (pypy3) | 1.32 secs      |
++---------------------+----------------+
+| chacha20-py         | 48.86 secs     |
++---------------------+----------------+
 
 .. _pycryptodome: https://pycryptodome.readthedocs.io/en/latest/src/introduction.html
 .. _PyPy: http://pypy.org
@@ -100,21 +102,25 @@ Usage
 .. code:: rst
 
     $ pproxy -h
-    usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-b BLOCK] [-v] [--ssl SSLFILE] [--pac PAC] [--get GETS] [--version]
+    usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-b BLOCK] [-a ALIVED] [-v]
+                  [--ssl SSLFILE] [--pac PAC] [--get GETS] [--test TESTURL]
+                  [--version]
     
     Proxy server that can tunnel among remote servers by regex rules. Supported
     protocols: http,socks,shadowsocks,shadowsocksr,redirect
     
     optional arguments:
-      -h, --help     show this help message and exit
-      -i LISTEN      proxy server setting uri (default: http+socks://:8080/)
-      -r RSERVER     remote server setting uri (default: direct)
-      -b BLOCK       block regex rules
-      -v             print verbose output
-      --ssl SSLFILE  certfile[,keyfile] if server listen in ssl mode
-      --pac PAC      http PAC path
-      --get GETS     http custom path/file
-      --version      show program's version number and exit
+      -h, --help      show this help message and exit
+      -i LISTEN       proxy server setting uri (default: http+socks://:8080/)
+      -r RSERVER      remote server setting uri (default: direct)
+      -b BLOCK        block regex rules
+      -a ALIVED       interval to check remote alive (default: no check)
+      -v              print verbose output
+      --ssl SSLFILE   certfile[,keyfile] if server listen in ssl mode
+      --pac PAC       http PAC path
+      --get GETS      http custom {path,file}
+      --test TESTURL  test this url for all remote proxies and exit
+      --version       show program's version number and exit
     
     Online help: <https://github.com/qwj/python-proxy>
 
@@ -140,6 +146,8 @@ URI Syntax
       | ssl    | unsecured ssl (no cert)     |
       +--------+-----------------------------+
       | secure | secured ssl (required cert) |
+      +--------+-----------------------------+
+      | direct | direct connection           |
       +--------+-----------------------------+
 
     - Valid schemes: http://, http+socks://, http+ssl://, ss+secure://, http+socks+ss://
@@ -231,12 +239,14 @@ URI Syntax
 - auth
     - The username, colon ':', and the password
 
+URIs can be joined by "__" to indicate tunneling by relay. For example, ss://1.2.3.4:1324__http://4.5.6.7:4321 make remote connection to the first shadowsocks proxy server, and then tunnel to the second http proxy server.
+
 .. _AEAD: http://shadowsocks.org/en/spec/AEAD-Ciphers.html
 
 Examples
 --------
 
-We can define file "rules" as follow:
+Define regex file "rules" as follow:
 
 .. code:: rst
 
@@ -256,7 +266,7 @@ We can define file "rules" as follow:
     (?:.+\.)?youtu\.be
     (?:.+\.)?google\..+
 
-Then start the pproxy
+Then start the *pproxy*
 
 .. code:: rst
 
@@ -266,9 +276,9 @@ Then start the pproxy
     http www.yahoo.com:80
     DIRECT: 1 (0.5K/s,1.2M/s)   PROXY: 2 (24.3K/s,1.9M/s)
 
-With these parameters, this utility will serve incoming traffic by either http/socks5 protocol, redirect all google traffic to http proxy aa.bb.cc.dd:8080, and visit all other traffic locally.
+*pproxy* will serve incoming traffic by auto-detect http/socks5 protocol, redirect all google traffic to http proxy aa.bb.cc.dd:8080, and visit all other traffic directly from local server.
 
-To bridge two servers, add cipher encryption to ensure data can't be intercepted. First, run pproxy locally
+Add cipher encryption to make sure data can't be intercepted. Run *pproxy* locally as:
 
 .. code:: rst
 
@@ -280,7 +290,7 @@ Next, run pproxy.py remotely on server "aa.bb.cc.dd"
 
     $ pproxy -i ss://chacha20:cipher_key@:12345
     
-By doing this, the traffic between local and aa.bb.cc.dd is encrypted by stream cipher Chacha20 with key "cipher_key". If target hostname is not matched by regex file "rules", traffic will go through locally. Otherwise, traffic will go through the remote server by encryption.
+The traffic between local and aa.bb.cc.dd is encrypted by stream cipher Chacha20 with key "cipher_key".
 
 A more complex example:
 
@@ -288,35 +298,42 @@ A more complex example:
 
     $ pproxy -i ss://salsa20!:complex_cipher_key@/tmp/pproxy_socket -r http+ssl://domain1.com:443#username:password
 
-It listen on the unix domain socket /tmp/pproxy_socket, and use cipher name salsa20, cipher key "complex_cipher_key", and enable explicit OTA encryption for shadowsocks protocol. The traffic is tunneled to remote https proxy with simple authentication. If OTA mode is not specified, server will allow both non-OTA and OTA traffic. If specified OTA mode, server only allow OTA client to connect.
+*pproxy* listen on the unix domain socket "/tmp/pproxy_socket" with cipher "salsa20" and key "complex_cipher_key". OTA packet protocol is enabled by adding ! after cipher name. The traffic is tunneled to remote https proxy with simple http authentication.
 
-If you want to listen in SSL, you must specify ssl certificate and private key files by parameter "--ssl", there is an example:
+If you want to listen in SSL, you must specify ssl certificate and private key files by parameter "--ssl":
 
 .. code:: rst
 
     $ pproxy -i http+ssl://0.0.0.0:443 -i http://0.0.0.0:80 --ssl server.crt,server.key --pac /autopac
 
-It listen on both 80 HTTP and 443 HTTPS ports, use the specified certificate and private key files. The "--pac" enable PAC support, so you can put https://yourdomain.com/autopac in your device's auto-configure url.
+*pproxy* listen on both 80 HTTP and 443 HTTPS ports, use the specified SSL certificate and private key files. The "--pac" enable PAC feature, so you can put "https://yourdomain.com/"" path in your device's auto-configure url.
 
-A ShadowsocksR example:
+ShadowsocksR example with plugin "tls1.2_ticket_auth" to emulate common tls traffic:
 
 .. code:: rst
 
     $ pproxy -i ssr://chacha20:mypass@0.0.0.0:443/,tls1.2_ticket_auth,verify_simple
 
-If you want to route the traffic by different local bind, use the @localbind syntax. For example, server has three ip interfaces: 192.168.1.15, 111.0.0.1, 112.0.0.1. You want to route traffic matched by "rule1" to 111.0.0.2 and traffic matched by "rule2" to 222.0.0.2, and the remaining traffic directly:
+If you want to route the traffic by different local bind, use the @localbind URI syntax. For example, server has three ip interfaces: 192.168.1.15, 111.0.0.1, 112.0.0.1. You want to route traffic matched by "rule1" to 111.0.0.2 and traffic matched by "rule2" to 222.0.0.2, and the remaining traffic directly:
 
 .. code:: rst
 
     $ pproxy -i ss://:8000/@in -r ss://111.0.0.2:8000/@111.0.0.1?rule1 -r ss://222.0.0.2:8000/@222.0.0.1?rule2
 
-An iptable NAT redirect example:
+IPtable NAT redirect example:
 
 .. code:: rst
 
-    $ iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 5555
+    $ sudo iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 5555
     $ pproxy -i redir://:5555 -r http://remote_http_server:3128 -v
 
-This example illustrates how to redirect all local output tcp traffic with destination port 80 to localhost port 5555 listened by **pproxy**, and then tunnel the traffic to remote http proxy.
+The above example illustrates how to redirect all local output tcp traffic with destination port 80 to localhost port 5555 listened by **pproxy**, and then tunnel the traffic to remote http proxy.
 
+Relay tunnel example:
+
+.. code:: rst
+
+    $ pproxy -r http://server1__ss://server2__socks://server3
+
+*pproxy* will try to connect to server1 first, tell server1 proxy tunnel to server2, and tell server2 proxy tunnel to server3, and make traffic by server3.
 
