@@ -116,7 +116,28 @@ class Shadowsocks(BaseProtocol):
         else:
             writer_remote.write(b'\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big'))
 
-class Socks(BaseProtocol):
+class Socks4(BaseProtocol):
+    name = 'socks4'
+    def correct_header(self, header, **kw):
+        return header == b'\x04'
+    async def parse(self, reader, writer, auth, authtable, **kw):
+        assert await reader.read_n(1) == b'\x01'
+        port = int.from_bytes(await reader.read_n(2), 'big')
+        ip = await reader.read_n(4)
+        userid = (await reader.read_until(b'\x00'))[:-1]
+        if auth:
+            if auth != userid and not authtable.authed():
+                raise Exception('Unauthorized SOCKS')
+            authtable.set_authed()
+        writer.write(b'\x00\x5a' + port.to_bytes(2, 'big') + ip)
+        return socket.inet_ntoa(ip), port, b''
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
+        ip = socket.inet_aton((await asyncio.get_event_loop().getaddrinfo(host_name, port, family=socket.AF_INET))[0][4][0])
+        writer_remote.write(b'\x04\x01' + port.to_bytes(2, 'big') + ip + rauth + b'\x00')
+        assert await reader_remote.read_n(2) == b'\x00\x5a'
+        await reader_remote.read_n(6)
+
+class Socks5(BaseProtocol):
     name = 'socks'
     def correct_header(self, header, **kw):
         return header == b'\x05'
@@ -246,7 +267,8 @@ async def parse(protos, reader, **kw):
         return (proto,) + ret
     raise Exception(f'Unsupported protocol {header}')
 
-MAPPINGS = dict(direct=Direct(), http=HTTP(), socks=Socks(), ss=Shadowsocks(), ssr=ShadowsocksR(), redir=Redirect(), ssl='', secure='')
+MAPPINGS = dict(direct=Direct(), http=HTTP(), socks5=Socks5(), socks4=Socks4(), ss=Shadowsocks(), ssr=ShadowsocksR(), redir=Redirect(), ssl='', secure='')
+MAPPINGS['socks'] = MAPPINGS['socks5']
 
 def get_protos(rawprotos):
     protos = []

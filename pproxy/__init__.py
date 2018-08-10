@@ -2,7 +2,7 @@ import argparse, time, re, asyncio, functools, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "1.6"
+__version__ = "1.6.2"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
@@ -213,15 +213,15 @@ def main():
     parser.add_argument('-r', dest='rserver', default=[], action='append', type=ProxyURI.compile_relay, help='remote server setting uri (default: direct)')
     parser.add_argument('-b', dest='block', type=pattern_compile, help='block regex rules')
     parser.add_argument('-a', dest='alived', default=0, type=int, help='interval to check remote alive (default: no check)')
-    parser.add_argument('-v', dest='v', action='store_true', help='print verbose output')
+    parser.add_argument('-v', dest='v', action='count', help='print verbose output')
     parser.add_argument('--ssl', dest='sslfile', help='certfile[,keyfile] if server listen in ssl mode')
-    parser.add_argument('--pac', dest='pac', help='http PAC path')
+    parser.add_argument('--pac', help='http PAC path')
     parser.add_argument('--get', dest='gets', default=[], action='append', help='http custom {path,file}')
-    parser.add_argument('--test', dest='testurl', help='test this url for all remote proxies and exit')
+    parser.add_argument('--test', help='test this url for all remote proxies and exit')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
-    if args.testurl:
-        asyncio.run(test_url(args.testurl, args.rserver))
+    if args.test:
+        asyncio.run(test_url(args.test, args.rserver))
         return
     if not args.listen:
         args.listen.append(ProxyURI.compile_relay('http+socks://:8080/'))
@@ -251,7 +251,7 @@ def main():
     loop = asyncio.get_event_loop()
     if args.v:
         from pproxy import verbose
-        verbose.setup(loop, args)
+        verbose.setup(loop, args, args.v)
     servers = []
     for option in args.listen:
         print('Serving on', option.bind, 'by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
