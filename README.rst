@@ -12,7 +12,7 @@ python-proxy
 .. |GitHub-stars| image:: https://img.shields.io/github/stars/qwj/python-proxy.svg?style=social&label=Star&maxAge=2592000
    :target: https://github.com/qwj/python-proxy/stargazers/
 
-HTTP/Socks/Shadowsocks/ShadowsocksR/Redirect asynchronous tunnel proxy implemented in Python3 asyncio.
+HTTP/Socks4/Socks5/Shadowsocks/ShadowsocksR/Redirect asynchronous tunnel proxy implemented in Python3 asyncio.
 
 QuickStart
 ----------
@@ -22,7 +22,7 @@ QuickStart
     $ pip3 install pproxy
     Successfully installed pproxy-1.6
     $ pproxy
-    Serving on :8080 by http,socks
+    Serving on :8080 by http,socks4,socks5
     ^C
     $ pproxy -i ss://chacha20:abc@:8080
     Serving on :8080 by ss (chacha20-py)
@@ -58,6 +58,7 @@ Features
 - PAC support for javascript configuration.
 - Iptables NAT redirect packet tunnel.
 - PyPy3 support with JIT speedup.
+- System proxy auto-setting support.
 
 .. _One-Time-Auth: https://shadowsocks.org/en/spec/one-time-auth.html
 
@@ -103,24 +104,25 @@ Usage
 
     $ pproxy -h
     usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-b BLOCK] [-a ALIVED] [-v]
-                  [--ssl SSLFILE] [--pac PAC] [--get GETS] [--test TESTURL]
-                  [--version]
+                  [--ssl SSLFILE] [--pac PAC] [--get GETS] [--sys]
+                  [--test TESTURL] [--version]
     
     Proxy server that can tunnel among remote servers by regex rules. Supported
-    protocols: http,socks,shadowsocks,shadowsocksr,redirect
+    protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect
     
     optional arguments:
-      -h, --help      show this help message and exit
-      -i LISTEN       proxy server setting uri (default: http+socks://:8080/)
-      -r RSERVER      remote server setting uri (default: direct)
-      -b BLOCK        block regex rules
-      -a ALIVED       interval to check remote alive (default: no check)
-      -v              print verbose output
-      --ssl SSLFILE   certfile[,keyfile] if server listen in ssl mode
-      --pac PAC       http PAC path
-      --get GETS      http custom {path,file}
-      --test TESTURL  test this url for all remote proxies and exit
-      --version       show program's version number and exit
+      -h, --help     show this help message and exit
+      -i LISTEN      proxy server setting uri (default: http+socks://:8080/)
+      -r RSERVER     remote server setting uri (default: direct)
+      -b BLOCK       block regex rules
+      -a ALIVED      interval to check remote alive (default: no check)
+      -v             print verbose output
+      --ssl SSLFILE  certfile[,keyfile] if server listen in ssl mode
+      --pac PAC      http PAC path
+      --get GETS     http custom {path,file}
+      --sys          change system proxy setting (mac, windows)
+      --test TEST    test this url for all remote proxies and exit
+      --version      show program's version number and exit
     
     Online help: <https://github.com/qwj/python-proxy>
 
@@ -135,7 +137,9 @@ URI Syntax
       +--------+-----------------------------+
       | http   | http protocol               |
       +--------+-----------------------------+
-      | socks  | socks5 protocol             |
+      | socks4 | socks4 protocol             |
+      +--------+-----------------------------+
+      | socks5 | socks5 protocol             |
       +--------+-----------------------------+
       | ss     | shadowsocks protocol        |
       +--------+-----------------------------+
@@ -150,7 +154,7 @@ URI Syntax
       | direct | direct connection           |
       +--------+-----------------------------+
 
-    - Valid schemes: http://, http+socks://, http+ssl://, ss+secure://, http+socks+ss://
+    - Valid schemes: http://, http+socks4+socks5://, http+ssl://, ss+secure://, http+socks5+ss://
     - Invalid schemes: ssl://, secure://
 - cipher
     - Cipher is consisted by cipher name, colon ':' and cipher key.
