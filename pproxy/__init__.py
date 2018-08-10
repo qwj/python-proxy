@@ -2,7 +2,7 @@ import argparse, time, re, asyncio, functools, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "1.6.2"
+__version__ = "1.6.3"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
@@ -208,8 +208,8 @@ async def test_url(url, rserver):
     print(f'============ success ============')
 
 def main():
-    parser = argparse.ArgumentParser(description=__description__+'\nSupported protocols: http,socks,shadowsocks,shadowsocksr,redirect', epilog='Online help: <https://github.com/qwj/python-proxy>')
-    parser.add_argument('-i', dest='listen', default=[], action='append', type=ProxyURI.compile, help='proxy server setting uri (default: http+socks://:8080/)')
+    parser = argparse.ArgumentParser(description=__description__+'\nSupported protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect', epilog='Online help: <https://github.com/qwj/python-proxy>')
+    parser.add_argument('-i', dest='listen', default=[], action='append', type=ProxyURI.compile, help='proxy server setting uri (default: http+socks4+socks5://:8080/)')
     parser.add_argument('-r', dest='rserver', default=[], action='append', type=ProxyURI.compile_relay, help='remote server setting uri (default: direct)')
     parser.add_argument('-b', dest='block', type=pattern_compile, help='block regex rules')
     parser.add_argument('-a', dest='alived', default=0, type=int, help='interval to check remote alive (default: no check)')
@@ -217,6 +217,7 @@ def main():
     parser.add_argument('--ssl', dest='sslfile', help='certfile[,keyfile] if server listen in ssl mode')
     parser.add_argument('--pac', help='http PAC path')
     parser.add_argument('--get', dest='gets', default=[], action='append', help='http custom {path,file}')
+    parser.add_argument('--sys', action='store_true', help='change system proxy setting (mac, windows)')
     parser.add_argument('--test', help='test this url for all remote proxies and exit')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
@@ -224,7 +225,7 @@ def main():
         asyncio.run(test_url(args.test, args.rserver))
         return
     if not args.listen:
-        args.listen.append(ProxyURI.compile_relay('http+socks://:8080/'))
+        args.listen.append(ProxyURI.compile_relay('http+socks4+socks5://:8080/'))
     if not args.rserver or args.rserver[-1].match:
         args.rserver.append(ProxyURI.DIRECT)
     args.httpget = {}
@@ -251,7 +252,7 @@ def main():
     loop = asyncio.get_event_loop()
     if args.v:
         from pproxy import verbose
-        verbose.setup(loop, args, args.v)
+        verbose.setup(loop, args)
     servers = []
     for option in args.listen:
         print('Serving on', option.bind, 'by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
@@ -262,12 +263,17 @@ def main():
         except Exception as ex:
             print('Start server failed.\n\t==>', ex)
     if servers:
+        if args.sys:
+            from pproxy import sysproxy
+            args.sys = sysproxy.setup(args)
         if args.alived > 0 and args.rserver:
             asyncio.ensure_future(check_server_alive(args.alived, args.rserver, args.verbose if args.v else DUMMY))
         try:
             loop.run_forever()
         except KeyboardInterrupt:
             print('exit')
+        if args.sys:
+            args.sys.clear()
     for task in asyncio.Task.all_tasks():
         task.cancel()
     for server in servers:

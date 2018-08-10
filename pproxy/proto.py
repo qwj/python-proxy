@@ -138,7 +138,7 @@ class Socks4(BaseProtocol):
         await reader_remote.read_n(6)
 
 class Socks5(BaseProtocol):
-    name = 'socks'
+    name = 'socks5'
     def correct_header(self, header, **kw):
         return header == b'\x05'
     async def parse(self, reader, writer, auth, authtable, **kw):

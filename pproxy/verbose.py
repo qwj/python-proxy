@@ -37,7 +37,7 @@ async def realtime_stat(stats):
         if len(history) >= 10:
             del history[:1]
 
-def setup(loop, args, v):
+def setup(loop, args):
     args.verbose = lambda s: sys.stdout.write(s+'\x1b[0K\n') and sys.stdout.flush()
     args.stats = {0: [0]*6}
     def modstat(remote_ip, host_name, stats=args.stats):
@@ -45,7 +45,7 @@ def setup(loop, args, v):
         tostat = (stats[0], stats.setdefault(remote_ip, {}).setdefault(host_name_2, [0]*6))
         return lambda i: lambda s: [st.__setitem__(i, st[i] + s) for st in tostat]
     args.modstat = modstat
-    if v >= 2:
+    if args.v >= 2:
         asyncio.ensure_future(realtime_stat(args.stats[0]))
         loop.add_reader(sys.stdin, functools.partial(all_stat, args.stats))
 
