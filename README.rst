@@ -45,6 +45,8 @@ Apply OS system-wide proxy: (MacOS, Windows)
 
 Apply CLI proxy: (MacOS, Linux)
 
+.. code:: rst
+
   $ export http_proxy=http://localhost:8080 
   $ export https_proxy=http://localhost:8080 
 
