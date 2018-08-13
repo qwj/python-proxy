@@ -31,8 +31,22 @@ Optional: (better performance with C ciphers)
 
   $ pip3 install pycryptodome
   Successfully installed pycryptodome-3.6.4
-  $ pproxy -i ss://chacha20:abc@:8080
-  Serving on :8080 by ss (chacha20)
+
+Apply OS system-wide proxy: (MacOS, Windows)
+
+.. code:: rst
+
+  $ pproxy -r ss://chacha20:abc@server_ip:8080 --sys -vv
+  Serving on :8080 by http,socks4,socks5 
+  System proxy setting -> socks5 localhost:8080
+  socks5 ::1:57345 -> ss server_ip:8080 -> slack.com:443
+  socks5 ::1:57345 -> ss server_ip:8080 -> www.google.com:443
+  ..... (all local traffic log) ......
+
+Apply CLI proxy: (MacOS, Linux)
+
+  $ export http_proxy=http://localhost:8080 
+  $ export https_proxy=http://localhost:8080 
 
 Features
 --------
