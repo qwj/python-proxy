@@ -311,13 +311,14 @@ Examples
 
     $ pproxy -i ss://:8888 -r ss://chacha20:cipher_key@aa.bb.cc.dd:12345 -v
 
-  Next, run pproxy.py remotely on server "aa.bb.cc.dd"
+  Next, run pproxy.py remotely on server "aa.bb.cc.dd". The base64 encoded string of "chacha20:cipher_key" is supported:
 
   .. code:: rst
 
     $ pproxy -i ss://chacha20:cipher_key@:12345
+    $ pproxy -i ss://Y2hhY2hhMjA6Y2lwaGVyX2tleQ==@:12345
 
-  The traffic between local and aa.bb.cc.dd is encrypted by stream cipher Chacha20 with key "cipher_key".
+  The traffic between local and aa.bb.cc.dd is encrypted by stream cipher Chacha20 with secret key "cipher_key".
 
 - Unix domain socket
 
