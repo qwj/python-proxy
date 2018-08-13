@@ -189,10 +189,8 @@ MAP = {cls.name(): cls for name, cls in globals().items() if name.endswith('_Cip
 
 def get_cipher(cipher_key):
     from pproxy.cipherpy import MAP as MAP_PY
-    cipher, _, key = cipher_key.partition(':')
+    cipher, key = cipher_key.split(':')
     cipher_name, ota, _ = cipher.partition('!')
-    if not key:
-        return 'empty key', None
     if cipher_name not in MAP and cipher_name not in MAP_PY and not (cipher_name.endswith('-py') and cipher_name[:-3] in MAP_PY):
         return f'existing ciphers: {sorted(set(MAP)|set(MAP_PY))}', None
     key, ota = key.encode(), bool(ota) if ota else False

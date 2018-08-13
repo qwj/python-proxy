@@ -1,8 +1,8 @@
-import argparse, time, re, asyncio, functools, urllib.parse
+import argparse, time, re, asyncio, functools, base64, urllib.parse
 from pproxy import proto
 
 __title__ = 'pproxy'
-__version__ = "1.6.3"
+__version__ = "1.6.4"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __author__ = "Qian Wenjie"
 __license__ = "MIT License"
@@ -155,6 +155,13 @@ class ProxyURI(object):
         cipher, _, loc = url.netloc.rpartition('@')
         if cipher:
             from pproxy.cipher import get_cipher
+            if ':' not in cipher:
+                try:
+                    cipher = base64.b64decode(cipher).decode()
+                except Exception:
+                    pass
+                if ':' not in cipher:
+                    raise argparse.ArgumentTypeError('userinfo must be "cipher:key"')
             err_str, cipher = get_cipher(cipher)
             if err_str:
                 raise argparse.ArgumentTypeError(err_str)
