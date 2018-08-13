@@ -273,7 +273,7 @@ Examples
 
   Define regex file "rules" as follow:
 
-.. code:: rst
+  .. code:: rst
 
     #google domains
     (?:.+\.)?google.*\.com
@@ -293,86 +293,86 @@ Examples
 
   Then start *pproxy*
 
-.. code:: rst
+  .. code:: rst
 
-  $ pproxy -i http+socks://:8080 -r http://aa.bb.cc.dd:8080?rules -v
-  http www.googleapis.com:443 -> http aa.bb.cc.dd:8080
-  socks www.youtube.com:443 -> http aa.bb.cc.dd:8080
-  http www.yahoo.com:80
-  DIRECT: 1 (0.5K/s,1.2M/s)   PROXY: 2 (24.3K/s,1.9M/s)
+    $ pproxy -i http+socks://:8080 -r http://aa.bb.cc.dd:8080?rules -v
+    http www.googleapis.com:443 -> http aa.bb.cc.dd:8080
+    socks www.youtube.com:443 -> http aa.bb.cc.dd:8080
+    http www.yahoo.com:80
+    DIRECT: 1 (0.5K/s,1.2M/s)   PROXY: 2 (24.3K/s,1.9M/s)
 
   *pproxy* will serve incoming traffic by auto-detect http/socks5 protocol, redirect all google traffic to http proxy aa.bb.cc.dd:8080, and visit all other traffic directly from local server.
 
 - Use cipher
 
-Add cipher encryption to make sure data can't be intercepted. Run *pproxy* locally as:
+  Add cipher encryption to make sure data can't be intercepted. Run *pproxy* locally as:
 
-.. code:: rst
+  .. code:: rst
 
-  $ pproxy -i ss://:8888 -r ss://chacha20:cipher_key@aa.bb.cc.dd:12345 -v
+    $ pproxy -i ss://:8888 -r ss://chacha20:cipher_key@aa.bb.cc.dd:12345 -v
 
-Next, run pproxy.py remotely on server "aa.bb.cc.dd"
+  Next, run pproxy.py remotely on server "aa.bb.cc.dd"
 
-.. code:: rst
+  .. code:: rst
 
-  $ pproxy -i ss://chacha20:cipher_key@:12345
+    $ pproxy -i ss://chacha20:cipher_key@:12345
 
-The traffic between local and aa.bb.cc.dd is encrypted by stream cipher Chacha20 with key "cipher_key".
+  The traffic between local and aa.bb.cc.dd is encrypted by stream cipher Chacha20 with key "cipher_key".
 
 - Unix domain socket
 
-A more complex example:
+  A more complex example:
 
-.. code:: rst
+  .. code:: rst
 
-  $ pproxy -i ss://salsa20!:complex_cipher_key@/tmp/pproxy_socket -r http+ssl://domain1.com:443#username:password
+    $ pproxy -i ss://salsa20!:complex_cipher_key@/tmp/pproxy_socket -r http+ssl://domain1.com:443#username:password
 
-*pproxy* listen on the unix domain socket "/tmp/pproxy_socket" with cipher "salsa20" and key "complex_cipher_key". OTA packet protocol is enabled by adding ! after cipher name. The traffic is tunneled to remote https proxy with simple http authentication.
+  *pproxy* listen on the unix domain socket "/tmp/pproxy_socket" with cipher "salsa20" and key "complex_cipher_key". OTA packet protocol is enabled by adding ! after cipher name. The traffic is tunneled to remote https proxy with simple http authentication.
 
 - SSL server/client
 
-If you want to listen in SSL, you must specify ssl certificate and private key files by parameter "--ssl":
+  If you want to listen in SSL, you must specify ssl certificate and private key files by parameter "--ssl":
 
-.. code:: rst
+  .. code:: rst
 
-  $ pproxy -i http+ssl://0.0.0.0:443 -i http://0.0.0.0:80 --ssl server.crt,server.key --pac /autopac
+    $ pproxy -i http+ssl://0.0.0.0:443 -i http://0.0.0.0:80 --ssl server.crt,server.key --pac /autopac
 
-*pproxy* listen on both 80 HTTP and 443 HTTPS ports, use the specified SSL certificate and private key files. The "--pac" enable PAC feature, so you can put "https://yourdomain.com/"" path in your device's auto-configure url.
+  *pproxy* listen on both 80 HTTP and 443 HTTPS ports, use the specified SSL certificate and private key files. The "--pac" enable PAC feature, so you can put "https://yourdomain.com/"" path in your device's auto-configure url.
 
 - SSR plugins
 
-ShadowsocksR example with plugin "tls1.2_ticket_auth" to emulate common tls traffic:
+  ShadowsocksR example with plugin "tls1.2_ticket_auth" to emulate common tls traffic:
 
-.. code:: rst
+  .. code:: rst
 
-  $ pproxy -i ssr://chacha20:mypass@0.0.0.0:443/,tls1.2_ticket_auth,verify_simple
+    $ pproxy -i ssr://chacha20:mypass@0.0.0.0:443/,tls1.2_ticket_auth,verify_simple
 
-- Local binds
+- Local bind ip
 
-If you want to route the traffic by different local bind, use the @localbind URI syntax. For example, server has three ip interfaces: 192.168.1.15, 111.0.0.1, 112.0.0.1. You want to route traffic matched by "rule1" to 111.0.0.2 and traffic matched by "rule2" to 222.0.0.2, and the remaining traffic directly:
+  If you want to route the traffic by different local bind, use the @localbind URI syntax. For example, server has three ip interfaces: 192.168.1.15, 111.0.0.1, 112.0.0.1. You want to route traffic matched by "rule1" to 111.0.0.2 and traffic matched by "rule2" to 222.0.0.2, and the remaining traffic directly:
 
-.. code:: rst
+  .. code:: rst
 
-  $ pproxy -i ss://:8000/@in -r ss://111.0.0.2:8000/@111.0.0.1?rule1 -r ss://222.0.0.2:8000/@222.0.0.1?rule2
+    $ pproxy -i ss://:8000/@in -r ss://111.0.0.2:8000/@111.0.0.1?rule1 -r ss://222.0.0.2:8000/@222.0.0.1?rule2
 
 - Redirect protocol
 
-IPtable NAT redirect example:
+  IPtable NAT redirect example:
 
-.. code:: rst
+  .. code:: rst
 
-  $ sudo iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 5555
-  $ pproxy -i redir://:5555 -r http://remote_http_server:3128 -v
+    $ sudo iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 5555
+    $ pproxy -i redir://:5555 -r http://remote_http_server:3128 -v
 
-The above example illustrates how to redirect all local output tcp traffic with destination port 80 to localhost port 5555 listened by **pproxy**, and then tunnel the traffic to remote http proxy.
+  The above example illustrates how to redirect all local output tcp traffic with destination port 80 to localhost port 5555 listened by **pproxy**, and then tunnel the traffic to remote http proxy.
 
 - Relay tunnel
 
-Relay tunnel example:
+  Relay tunnel example:
 
-.. code:: rst
+  .. code:: rst
 
-  $ pproxy -r http://server1__ss://server2__socks://server3
+    $ pproxy -r http://server1__ss://server2__socks://server3
 
-*pproxy* will try to connect to server1 first, tell server1 proxy tunnel to server2, and tell server2 proxy tunnel to server3, and make traffic by server3.
+  *pproxy* will try to connect to server1 first, tell server1 proxy tunnel to server2, and tell server2 proxy tunnel to server3, and make traffic by server3.
 
