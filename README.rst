@@ -311,13 +311,13 @@ Examples
 
   .. code:: rst
 
-    $ pproxy -i http+socks://:8080 -r http://aa.bb.cc.dd:8080?rules -v
-    http www.googleapis.com:443 -> http aa.bb.cc.dd:8080
-    socks www.youtube.com:443 -> http aa.bb.cc.dd:8080
-    http www.yahoo.com:80
-    DIRECT: 1 (0.5K/s,1.2M/s)   PROXY: 2 (24.3K/s,1.9M/s)
+    $ pproxy -r http://aa.bb.cc.dd:8080?rules -v
+    Serving on :8080 by http,socks4,socks5
+    http ::1:57768 -> http aa.bb.cc.dd:8080 -> www.googleapis.com:443
+    http ::1:57772 -> www.yahoo.com:80
+    socks4 ::1:57770 -> http aa.bb.cc.dd:8080 -> www.youtube.com:443
 
-  *pproxy* will serve incoming traffic by auto-detect http/socks5 protocol, redirect all google traffic to http proxy aa.bb.cc.dd:8080, and visit all other traffic directly from local server.
+  *pproxy* will serve incoming traffic by http/socks4/socks5 auto-detect protocol, redirect all google traffic to http proxy aa.bb.cc.dd:8080, and visit all other traffic directly from local.
 
 - Use cipher
 
@@ -327,11 +327,16 @@ Examples
 
     $ pproxy -i ss://:8888 -r ss://chacha20:cipher_key@aa.bb.cc.dd:12345 -v
 
-  Next, run pproxy.py remotely on server "aa.bb.cc.dd". The base64 encoded string of "chacha20:cipher_key" is supported:
+  Next, run pproxy.py remotely on server "aa.bb.cc.dd". The base64 encoded string of "chacha20:cipher_key" is also supported:
 
   .. code:: rst
 
     $ pproxy -i ss://chacha20:cipher_key@:12345
+
+  The same as:
+
+  .. code:: rst
+
     $ pproxy -i ss://Y2hhY2hhMjA6Y2lwaGVyX2tleQ==@:12345
 
   The traffic between local and aa.bb.cc.dd is encrypted by stream cipher Chacha20 with secret key "cipher_key".
@@ -401,5 +406,5 @@ Examples
 
     $ pproxy -r http://server1__ss://server2__socks://server3
 
-  *pproxy* will try to connect to server1 first, tell server1 proxy connect to server2, and tell server2 proxy connect to server3, and make traffic by server3.
+  *pproxy* will connect to server1 first, tell server1 connect to server2, and tell server2 connect to server3, and make real traffic by server3.
 
