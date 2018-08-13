@@ -130,6 +130,7 @@ URI Syntax
   {scheme}://[{cipher}@]{netloc}/[@{localbind}][,{plugins}][?{rules}][#{auth}]
 
 - scheme
+
   - Currently supported scheme: http, socks, ss, ssl, secure. You can use + to link multiple protocols together.
 
     +--------+-----------------------------+
@@ -153,9 +154,13 @@ URI Syntax
     +--------+-----------------------------+
 
   - Valid schemes: http://, http+socks4+socks5://, http+ssl://, ss+secure://, http+socks5+ss://
+
   - Invalid schemes: ssl://, secure://
+
 - cipher
+
   - Cipher's format: "cipher_name:cipher_key". Cipher can be base64-encoded. So cipher string with "YWVzLTEyOC1nY206dGVzdA==" is equal to "aes-128-gcm:test".
+
   - Full cipher support list:
 
     +-----------------+------------+-----------+-------------+
@@ -224,21 +229,37 @@ URI Syntax
     +-----------------+------------+-----------+-------------+
 
   - *pproxy* ciphers have pure python implementations. Program will switch to C cipher if there is C implementation available within pycryptodome_. Otherwise, use pure python cipher.
+
   - AEAD ciphers use additional payload after each packet. The underlying protocol is different. Specifications: AEAD_.
+
   - Some pure python ciphers (aes-256-cfb1-py) is quite slow, and is not recommended to use without PyPy speedup. Try install pycryptodome_ and use C version cipher instead.
+
   - To enable OTA encryption with shadowsocks, add '!' immediately after cipher name.
+
 - netloc
+
   - It can be "hostname:port" or "/unix_domain_socket". If the hostname is empty, server will listen on all interfaces.
+
   - Valid netloc: localhost:8080, 0.0.0.0:8123, /tmp/domain_socket, :8123
+
 - localbind
+
   - It can be "@in" or @ipv4_address or @ipv6_address
+
   - Valid localbind: @in, @192.168.1.15, @::1
+
 - plugins
+
   - It can be multiple plugins joined by ",". Supported plugins: plain, origin, http_simple, tls1.2_ticket_auth, verify_simple, verify_deflate
+
   - Valid plugins: /,tls1.2_ticket_auth,verify_simple
+
 - rules
+
   - The filename that contains regex rules
+
 - auth
+
   - The username, colon ':', and the password
 
 URIs can be joined by "__" to indicate tunneling by relay. For example, ss://1.2.3.4:1324__http://4.5.6.7:4321 make remote connection to the first shadowsocks proxy server, and then tunnel to the second http proxy server.
