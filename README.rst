@@ -46,7 +46,7 @@ Features
 - Unix domain socket.
 - Basic authentication for all protocols.
 - Regex pattern file to route/block by hostname.
-- SSL client/server support.
+- SSL/TLS client/server support.
 - Built-in encryption ciphers. (chacha20, aes-256-cfb, etc)
 - Shadowsocks OTA (One-Time-Auth_).
 - SSR plugins. (http_simple, verify_simple, tls1.2_ticket_auth, etc)
@@ -146,9 +146,9 @@ URI Syntax
     +--------+-----------------------------+
     | redir  | redirect (iptables nat)     |
     +--------+-----------------------------+
-    | ssl    | unsecured ssl (no cert)     |
+    | ssl    | unsecured ssl/tls (no cert) |
     +--------+-----------------------------+
-    | secure | secured ssl (required cert) |
+    | secure | secured ssl/tls (cert)      |
     +--------+-----------------------------+
     | direct | direct connection           |
     +--------+-----------------------------+
@@ -329,15 +329,25 @@ Examples
 
   *pproxy* listen on the unix domain socket "/tmp/pproxy_socket" with cipher "salsa20" and key "complex_cipher_key". OTA packet protocol is enabled by adding ! after cipher name. The traffic is tunneled to remote https proxy with simple http authentication.
 
-- SSL server/client
+- SSL/TLS server
 
-  If you want to listen in SSL, you must specify ssl certificate and private key files by parameter "--ssl":
+  If you want to listen in SSL/TLS, you must specify ssl certificate and private key files by parameter "--ssl":
 
   .. code:: rst
 
     $ pproxy -i http+ssl://0.0.0.0:443 -i http://0.0.0.0:80 --ssl server.crt,server.key --pac /autopac
 
-  *pproxy* listen on both 80 HTTP and 443 HTTPS ports, use the specified SSL certificate and private key files. The "--pac" enable PAC feature, so you can put "https://yourdomain.com/"" path in your device's auto-configure url.
+  *pproxy* listen on both 80 HTTP and 443 HTTPS ports, use the specified SSL/TLS certificate and private key files. The "--pac" enable PAC feature, so you can put "https://yourdomain.com/autopac" path in your device's auto-configure url.
+
+  Simple guide for generating self-signed ssl certificates:
+
+  .. code:: rst
+
+    $ openssl genrsa -des3 -out server.key 1024
+    $ openssl req -new -key server.key -out server.csr
+    $ cp server.key server.key.org
+    $ openssl rsa -in server.key.org -out server.key
+    $ openssl x509 -req -days 365 -in server.csr -signkey server.key -out server.crt
 
 - SSR plugins
 
@@ -374,5 +384,5 @@ Examples
 
     $ pproxy -r http://server1__ss://server2__socks://server3
 
-  *pproxy* will try to connect to server1 first, tell server1 proxy tunnel to server2, and tell server2 proxy tunnel to server3, and make traffic by server3.
+  *pproxy* will try to connect to server1 first, tell server1 proxy connect to server2, and tell server2 proxy connect to server3, and make traffic by server3.
 
