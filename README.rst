@@ -125,7 +125,7 @@ Usage
 URI Syntax
 ----------
 
-..code:: rst
+.. code:: rst
 
   {scheme}://[{cipher}@]{netloc}/[@{localbind}][,{plugins}][?{rules}][#{auth}]
 
@@ -250,27 +250,27 @@ Examples
 
 - Regex rule
 
-Define regex file "rules" as follow:
+  Define regex file "rules" as follow:
 
 .. code:: rst
 
-  #google domains
-  (?:.+\.)?google.*\.com
-  (?:.+\.)?gstatic\.com
-  (?:.+\.)?gmail\.com
-  (?:.+\.)?ntp\.org
-  (?:.+\.)?glpals\.com
-  (?:.+\.)?akamai.*\.net
-  (?:.+\.)?ggpht\.com
-  (?:.+\.)?android\.com
-  (?:.+\.)?gvt1\.com
-  (?:.+\.)?youtube.*\.com
-  (?:.+\.)?ytimg\.com
-  (?:.+\.)?goo\.gl
-  (?:.+\.)?youtu\.be
-  (?:.+\.)?google\..+
+    #google domains
+    (?:.+\.)?google.*\.com
+    (?:.+\.)?gstatic\.com
+    (?:.+\.)?gmail\.com
+    (?:.+\.)?ntp\.org
+    (?:.+\.)?glpals\.com
+    (?:.+\.)?akamai.*\.net
+    (?:.+\.)?ggpht\.com
+    (?:.+\.)?android\.com
+    (?:.+\.)?gvt1\.com
+    (?:.+\.)?youtube.*\.com
+    (?:.+\.)?ytimg\.com
+    (?:.+\.)?goo\.gl
+    (?:.+\.)?youtu\.be
+    (?:.+\.)?google\..+
 
-Then start the *pproxy*
+  Then start *pproxy*
 
 .. code:: rst
 
@@ -280,7 +280,7 @@ Then start the *pproxy*
   http www.yahoo.com:80
   DIRECT: 1 (0.5K/s,1.2M/s)   PROXY: 2 (24.3K/s,1.9M/s)
 
-*pproxy* will serve incoming traffic by auto-detect http/socks5 protocol, redirect all google traffic to http proxy aa.bb.cc.dd:8080, and visit all other traffic directly from local server.
+  *pproxy* will serve incoming traffic by auto-detect http/socks5 protocol, redirect all google traffic to http proxy aa.bb.cc.dd:8080, and visit all other traffic directly from local server.
 
 - Use cipher
 
