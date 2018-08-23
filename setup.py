@@ -38,6 +38,11 @@ setup(
     ],
     keywords='proxy socks http shadowsocks redirect tunnel cipher ssl',
     packages=['pproxy'],
+    extras_require={
+        'accelerated': [
+            'pycryptodome',
+        ],
+    },
     install_requires=[],
     entry_points={
         'console_scripts': [
