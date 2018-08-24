@@ -29,7 +29,7 @@ Optional: (better performance with C ciphers)
 
 .. code:: rst
 
-  $ pip3 install pycryptodome
+  $ pip3 install pproxy[accelerated]
   Successfully installed pycryptodome-3.6.4
 
 Apply OS system-wide proxy: (MacOS, Windows)
