@@ -34,9 +34,10 @@ setup(
         'Topic :: Software Development :: Build Tools',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
     ],
-    keywords='proxy socks http shadowsocks redirect tunnel cipher ssl',
+    keywords='proxy socks http shadowsocks shadowsocksr ssr redirect tunnel cipher ssl',
     packages=['pproxy'],
     extras_require={
         'accelerated': [

@@ -10,7 +10,7 @@ python-proxy
 .. |Hit-Count| image:: http://hits.dwyl.io/qwj/python-proxy.svg
    :target: https://pypi.python.org/pypi/pproxy/
 
-HTTP/Socks4/Socks5/Shadowsocks/ShadowsocksR/Redirect asynchronous tunnel proxy implemented in Python3 asyncio.
+HTTP/Socks4/Socks5/Shadowsocks/ShadowsocksR/Redirect/Pf asynchronous tunnel proxy implemented in Python3 asyncio.
 
 QuickStart
 ----------
@@ -138,6 +138,35 @@ Usage
   
   Online help: <https://github.com/qwj/python-proxy>
 
+Protocols
+---------
+
++-------------------+------------+-----------+-------------+
+| Name              | server     | client    | scheme      |
++===================+============+===========+=============+
+| http (connect)    | ✔          | ✔         | http://     |
++-------------------+------------+-----------+-------------+
+| http (get,post)   | ✔          | ✖         | http://     |
++-------------------+------------+-----------+-------------+
+| https             | ✔          | ✔         | http+ssl:// |
++-------------------+------------+-----------+-------------+
+| socks4            | ✔          | ✔         | socks4://   |
++-------------------+------------+-----------+-------------+
+| socks5            | ✔          | ✔         | socks5://   |
++-------------------+------------+-----------+-------------+
+| shadowsocks       | ✔          | ✔         | ss://       |
++-------------------+------------+-----------+-------------+
+| shadowsocks aead  | ✔          | ✔         | ss://       |
++-------------------+------------+-----------+-------------+
+| shadowsocksR      | ✔          | ✔         | ssr://      |
++-------------------+------------+-----------+-------------+
+| iptables nat      | ✔          |           | redir://    |
++-------------------+------------+-----------+-------------+
+| pfctl nat (macos) | ✔          |           | pf://       |
++-------------------+------------+-----------+-------------+
+| AUTO DETECT       | ✔          |           | a+b+c+d://  |
++-------------------+------------+-----------+-------------+
+
 URI Syntax
 ----------
 
@@ -161,6 +190,8 @@ URI Syntax
     | ssr    | shadowsocksr (SSR) protocol |
     +--------+-----------------------------+
     | redir  | redirect (iptables nat)     |
+    +--------+-----------------------------+
+    | pf     | pfctl (macos pf nat)        |
     +--------+-----------------------------+
     | ssl    | unsecured ssl/tls (no cert) |
     +--------+-----------------------------+
@@ -387,9 +418,9 @@ Examples
 
     $ pproxy -i ss://:8000/@in -r ss://111.0.0.2:8000/@111.0.0.1?rule1 -r ss://222.0.0.2:8000/@222.0.0.1?rule2
 
-- Redirect protocol
+- Redirect/Pf protocol
 
-  IPtable NAT redirect example:
+  IPTable NAT redirect example (Ubuntu):
 
   .. code:: rst
 
@@ -397,6 +428,18 @@ Examples
     $ pproxy -i redir://:5555 -r http://remote_http_server:3128 -v
 
   The above example illustrates how to redirect all local output tcp traffic with destination port 80 to localhost port 5555 listened by **pproxy**, and then tunnel the traffic to remote http proxy.
+
+  PF redirect example (MacOS):
+
+  .. code:: rst
+
+    $ sudo pfctl -ef /dev/stdin
+    rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port 8080
+    pass out on en0 route-to lo0 inet proto tcp from any to any port 80 keep state
+    ^D
+    $ sudo pproxy -i pf://:8080 -r socks5://remote_socks5_server:1324 -v
+
+  Make sure **pproxy** runs in root mode (sudo), otherwise it cannot redirect pf packet.
 
 - Relay tunnel
 
