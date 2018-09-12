@@ -1,4 +1,4 @@
-import asyncio, socket, urllib.parse, time, re, base64, hmac, struct, hashlib
+import asyncio, socket, urllib.parse, time, re, base64, hmac, struct, hashlib, fcntl
 
 HTTP_LINE = re.compile('([^ ]+) +(.+?) +(HTTP/[^ ]+)$')
 packstr = lambda s, n=1: len(s).to_bytes(n, 'big') + s
@@ -232,25 +232,53 @@ class HTTP(BaseProtocol):
         finally:
             writer.close()
 
-SO_ORIGINAL_DST = 80
-class Redirect(BaseProtocol):
-    name = 'redir'
+class Transparent(BaseProtocol):
     def correct_header(self, header, auth, sock, **kw):
-        try:
-            buf = sock.getsockopt(socket.SOL_IP, SO_ORIGINAL_DST, 16)
-            assert len(buf) == 16
-            remote = (socket.inet_ntoa(buf[4:8]), int.from_bytes(buf[2:4], 'big'))
-            assert sock.getsockname() != remote
-        except Exception:
+        remote = self.query_remote(sock)
+        if remote is None or sock.getsockname() == remote:
             return False
         return auth and header == auth[:1] or not auth
     async def parse(self, reader, auth, authtable, sock, **kw):
         if auth:
             if (await reader.read_n(len(auth)-1)) != auth[1:]:
-                raise Exception('Unauthorized Redir')
+                raise Exception(f'Unauthorized {self.name}')
             authtable.set_authed()
-        buf = sock.getsockopt(socket.SOL_IP, SO_ORIGINAL_DST, 16)
-        return socket.inet_ntoa(buf[4:8]), int.from_bytes(buf[2:4], 'big'), b''
+        remote = self.query_remote(sock)
+        return remote[0], remote[1], b''
+
+SO_ORIGINAL_DST = 80
+SOL_IPV6 = 41
+class Redirect(Transparent):
+    name = 'redir'
+    def query_remote(self, sock):
+        try:
+            #if sock.family == socket.AF_INET:
+            if "." in sock.getsockname()[0]:
+                buf = sock.getsockopt(socket.SOL_IP, SO_ORIGINAL_DST, 16)
+                assert len(buf) == 16
+                return socket.inet_ntoa(buf[4:8]), int.from_bytes(buf[2:4], 'big')
+            else:
+                buf = sock.getsockopt(SOL_IPV6, SO_ORIGINAL_DST, 28)
+                assert len(buf) == 28
+                return socket.inet_ntop(socket.AF_INET6, buf[8:24]), int.from_bytes(buf[2:4], 'big')
+        except Exception:
+            pass
+
+class Pf(Transparent):
+    name = 'pf'
+    def query_remote(self, sock):
+        try:
+            src = sock.getpeername()
+            dst = sock.getsockname()
+            src_ip = socket.inet_pton(sock.family, src[0])
+            dst_ip = socket.inet_pton(sock.family, dst[0])
+            pnl = bytearray(struct.pack('!16s16s32xHxxHxx8xBBxB', src_ip, dst_ip, src[1], dst[1], sock.family, socket.IPPROTO_TCP, 2))
+            if not hasattr(self, 'pf'):
+                self.pf = open('/dev/pf', 'a+b')
+            fcntl.ioctl(self.pf.fileno(), 0xc0544417, pnl)
+            return socket.inet_ntop(sock.family, pnl[48:48+len(src_ip)]), int.from_bytes(pnl[76:78], 'big')
+        except Exception:
+            pass
 
 async def parse(protos, reader, **kw):
     proto = next(filter(lambda p: p.correct_header(None, **kw), protos), None)
@@ -267,7 +295,7 @@ async def parse(protos, reader, **kw):
         return (proto,) + ret
     raise Exception(f'Unsupported protocol {header}')
 
-MAPPINGS = dict(direct=Direct(), http=HTTP(), socks5=Socks5(), socks4=Socks4(), ss=Shadowsocks(), ssr=ShadowsocksR(), redir=Redirect(), ssl='', secure='')
+MAPPINGS = dict(direct=Direct(), http=HTTP(), socks5=Socks5(), socks4=Socks4(), ss=Shadowsocks(), ssr=ShadowsocksR(), redir=Redirect(), pf=Pf(), ssl='', secure='')
 MAPPINGS['socks'] = MAPPINGS['socks5']
 
 def get_protos(rawprotos):
