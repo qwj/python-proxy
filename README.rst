@@ -22,7 +22,7 @@ QuickStart
   $ pproxy
   Serving on :8080 by http,socks4,socks5
   ^C
-  $ pproxy -i ss://chacha20:abc@:8080
+  $ pproxy -l ss://chacha20:abc@:8080
   Serving on :8080 by ss (chacha20-py)
 
 Optional: (better performance with C ciphers)
@@ -116,7 +116,7 @@ Usage
 .. code:: rst
 
   $ pproxy -h
-  usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-ui ULISTEN] [-ur URSERVER]
+  usage: pproxy [-h] [-l LISTEN] [-r RSERVER] [-ul ULISTEN] [-ur URSERVER]
                 [-b BLOCK] [-a ALIVED] [-v] [--ssl SSLFILE] [--pac PAC]
                 [--get GETS] [--sys] [--test TESTURL] [--version]
   
@@ -125,9 +125,9 @@ Usage
   
   optional arguments:
     -h, --help     show this help message and exit
-    -i LISTEN      tcp server uri (default: http+socks4+socks5://:8080/)
+    -l LISTEN      tcp server uri (default: http+socks4+socks5://:8080/)
     -r RSERVER     tcp remote server uri (default: direct)
-    -ui ULISTEN    udp server setting uri (default: none)
+    -ul ULISTEN    udp server setting uri (default: none)
     -ur URSERVER   udp remote server uri (default: direct)
     -b BLOCK       block regex rules
     -a ALIVED      interval to check remote alive (default: no check)
@@ -167,7 +167,7 @@ Protocols
 +-------------------+------------+------------+------------+------------+--------------+
 | pfctl nat (macos) | ✔          |            |            |            | pf://        |
 +-------------------+------------+------------+------------+------------+--------------+
-| echo              | ✔          |            |            |            | echo://      |
+| echo              | ✔          |            | ✔          |            | echo://      |
 +-------------------+------------+------------+------------+------------+--------------+
 | tunnel            | ✔          | ✔          | ✔          | ✔          | tunnel://    |
 | (raw socket)      |            |            |            |            | tunnel{ip}://|
@@ -368,19 +368,19 @@ Examples
 
   .. code:: rst
 
-    $ pproxy -i ss://:8888 -r ss://chacha20:cipher_key@aa.bb.cc.dd:12345 -v
+    $ pproxy -l ss://:8888 -r ss://chacha20:cipher_key@aa.bb.cc.dd:12345 -v
 
   Next, run pproxy.py remotely on server "aa.bb.cc.dd". The base64 encoded string of "chacha20:cipher_key" is also supported:
 
   .. code:: rst
 
-    $ pproxy -i ss://chacha20:cipher_key@:12345
+    $ pproxy -l ss://chacha20:cipher_key@:12345
 
   The same as:
 
   .. code:: rst
 
-    $ pproxy -i ss://Y2hhY2hhMjA6Y2lwaGVyX2tleQ==@:12345
+    $ pproxy -l ss://Y2hhY2hhMjA6Y2lwaGVyX2tleQ==@:12345
 
   The traffic between local and aa.bb.cc.dd is encrypted by stream cipher Chacha20 with secret key "cipher_key".
 
@@ -390,7 +390,7 @@ Examples
 
   .. code:: rst
 
-    $ pproxy -i ss://salsa20!:complex_cipher_key@/tmp/pproxy_socket -r http+ssl://domain1.com:443#username:password
+    $ pproxy -l ss://salsa20!:complex_cipher_key@/tmp/pproxy_socket -r http+ssl://domain1.com:443#username:password
 
   *pproxy* listen on the unix domain socket "/tmp/pproxy_socket" with cipher "salsa20" and key "complex_cipher_key". OTA packet protocol is enabled by adding ! after cipher name. The traffic is tunneled to remote https proxy with simple http authentication.
 
@@ -400,7 +400,7 @@ Examples
 
   .. code:: rst
 
-    $ pproxy -i http+ssl://0.0.0.0:443 -i http://0.0.0.0:80 --ssl server.crt,server.key --pac /autopac
+    $ pproxy -l http+ssl://0.0.0.0:443 -l http://0.0.0.0:80 --ssl server.crt,server.key --pac /autopac
 
   *pproxy* listen on both 80 HTTP and 443 HTTPS ports, use the specified SSL/TLS certificate and private key files. The "--pac" enable PAC feature, so you can put "https://yourdomain.com/autopac" path in your device's auto-configure url.
 
@@ -420,7 +420,7 @@ Examples
 
   .. code:: rst
 
-    $ pproxy -i ssr://chacha20:mypass@0.0.0.0:443/,tls1.2_ticket_auth,verify_simple
+    $ pproxy -l ssr://chacha20:mypass@0.0.0.0:443/,tls1.2_ticket_auth,verify_simple
 
 - Local bind ip
 
@@ -428,7 +428,7 @@ Examples
 
   .. code:: rst
 
-    $ pproxy -i ss://:8000/@in -r ss://111.0.0.2:8000/@111.0.0.1?rule1 -r ss://222.0.0.2:8000/@222.0.0.1?rule2
+    $ pproxy -l ss://:8000/@in -r ss://111.0.0.2:8000/@111.0.0.1?rule1 -r ss://222.0.0.2:8000/@222.0.0.1?rule2
 
 - Redirect/Pf protocol
 
@@ -437,7 +437,7 @@ Examples
   .. code:: rst
 
     $ sudo iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 5555
-    $ pproxy -i redir://:5555 -r http://remote_http_server:3128 -v
+    $ pproxy -l redir://:5555 -r http://remote_http_server:3128 -v
 
   The above example illustrates how to redirect all local output tcp traffic with destination port 80 to localhost port 5555 listened by **pproxy**, and then tunnel the traffic to remote http proxy.
 
@@ -449,7 +449,7 @@ Examples
     rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port 8080
     pass out on en0 route-to lo0 inet proto tcp from any to any port 80 keep state
     ^D
-    $ sudo pproxy -i pf://:8080 -r socks5://remote_socks5_server:1324 -v
+    $ sudo pproxy -l pf://:8080 -r socks5://remote_socks5_server:1324 -v
 
   Make sure **pproxy** runs in root mode (sudo), otherwise it cannot redirect pf packet.
 
@@ -469,14 +469,14 @@ Examples
 
   .. code:: rst
 
-    $ pproxy -i tunnel{google.com}://:80
+    $ pproxy -l tunnel{google.com}://:80
     $ curl -H "Host: google.com" http://localhost
 
   UDP dns tunnel example:
 
   .. code:: rst
 
-    $ pproxy -ui tunnel{8.8.8.8}://:53
+    $ pproxy -ul tunnel{8.8.8.8}://:53
     $ nslookup google.com localhost
 
 - UDP more complicated example
@@ -485,13 +485,13 @@ Examples
 
   .. code:: rst
 
-    $ pproxy -ui ss://remote_server:13245
+    $ pproxy -ul ss://remote_server:13245
 
   Run the commands on local machine:
 
   .. code:: rst
 
-    $ pproxy -ui tunnel{8.8.8.8}://:53 -ur ss://remote_server:13245
+    $ pproxy -ul tunnel{8.8.8.8}://:53 -ur ss://remote_server:13245
     UDP tunnel 127.0.0.1:60573 -> ss remote_server:13245 -> 8.8.8.8:53
     UDP tunnel 127.0.0.1:60574 -> ss remote_server:13245 -> 8.8.8.8:53
     ...
