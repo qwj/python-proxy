@@ -10,7 +10,7 @@ python-proxy
 .. |Hit-Count| image:: http://hits.dwyl.io/qwj/python-proxy.svg
    :target: https://pypi.python.org/pypi/pproxy/
 
-HTTP/Socks4/Socks5/Shadowsocks/ShadowsocksR/Redirect/Pf asynchronous tunnel proxy implemented in Python3 asyncio.
+HTTP/Socks4/Socks5/Shadowsocks/ShadowsocksR/Redirect/Pf TCP/UDP asynchronous tunnel proxy implemented in Python3 asyncio.
 
 QuickStart
 ----------
@@ -18,7 +18,7 @@ QuickStart
 .. code:: rst
 
   $ pip3 install pproxy
-  Successfully installed pproxy-1.6.4
+  Successfully installed pproxy-1.7.0
   $ pproxy
   Serving on :8080 by http,socks4,socks5
   ^C
@@ -71,6 +71,7 @@ Features
 - Iptables NAT redirect packet tunnel.
 - PyPy3 support with JIT speedup.
 - System proxy auto-setting support.
+- UDP proxy client/server support.
 
 .. _One-Time-Auth: https://shadowsocks.org/en/spec/one-time-auth.html
 
@@ -115,17 +116,19 @@ Usage
 .. code:: rst
 
   $ pproxy -h
-  usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-b BLOCK] [-a ALIVED] [-v]
-                [--ssl SSLFILE] [--pac PAC] [--get GETS] [--sys]
-                [--test TESTURL] [--version]
+  usage: pproxy [-h] [-i LISTEN] [-r RSERVER] [-ui ULISTEN] [-ur URSERVER]
+                [-b BLOCK] [-a ALIVED] [-v] [--ssl SSLFILE] [--pac PAC]
+                [--get GETS] [--sys] [--test TESTURL] [--version]
   
   Proxy server that can tunnel among remote servers by regex rules. Supported
-  protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect
+  protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect,pf,tunnel
   
   optional arguments:
     -h, --help     show this help message and exit
-    -i LISTEN      proxy server setting uri (default: http+socks://:8080/)
-    -r RSERVER     remote server setting uri (default: direct)
+    -i LISTEN      tcp server uri (default: http+socks4+socks5://:8080/)
+    -r RSERVER     tcp remote server uri (default: direct)
+    -ui ULISTEN    udp server setting uri (default: none)
+    -ur URSERVER   udp remote server uri (default: direct)
     -b BLOCK       block regex rules
     -a ALIVED      interval to check remote alive (default: no check)
     -v             print verbose output
@@ -141,31 +144,36 @@ Usage
 Protocols
 ---------
 
-+-------------------+------------+-----------+-------------+
-| Name              | server     | client    | scheme      |
-+===================+============+===========+=============+
-| http (connect)    | ✔          | ✔         | http://     |
-+-------------------+------------+-----------+-------------+
-| http (get,post)   | ✔          | ✖         | http://     |
-+-------------------+------------+-----------+-------------+
-| https             | ✔          | ✔         | http+ssl:// |
-+-------------------+------------+-----------+-------------+
-| socks4            | ✔          | ✔         | socks4://   |
-+-------------------+------------+-----------+-------------+
-| socks5            | ✔          | ✔         | socks5://   |
-+-------------------+------------+-----------+-------------+
-| shadowsocks       | ✔          | ✔         | ss://       |
-+-------------------+------------+-----------+-------------+
-| shadowsocks aead  | ✔          | ✔         | ss://       |
-+-------------------+------------+-----------+-------------+
-| shadowsocksR      | ✔          | ✔         | ssr://      |
-+-------------------+------------+-----------+-------------+
-| iptables nat      | ✔          |           | redir://    |
-+-------------------+------------+-----------+-------------+
-| pfctl nat (macos) | ✔          |           | pf://       |
-+-------------------+------------+-----------+-------------+
-| AUTO DETECT       | ✔          |           | a+b+c+d://  |
-+-------------------+------------+-----------+-------------+
++-------------------+------------+------------+------------+------------+--------------+
+| Name              | TCP server | TCP client | UDP server | UDP client | scheme       |
++===================+============+============+============+============+==============+
+| http (connect)    | ✔          | ✔          |            |            | http://      |
++-------------------+------------+------------+------------+------------+--------------+
+| http (get,post)   | ✔          | ✖          |            |            | http://      |
++-------------------+------------+------------+------------+------------+--------------+
+| https             | ✔          | ✔          |            |            | http+ssl://  |
++-------------------+------------+------------+------------+------------+--------------+
+| socks4            | ✔          | ✔          |            |            | socks4://    |
++-------------------+------------+------------+------------+------------+--------------+
+| socks5            | ✔          | ✔          | ✔ udp-only | ✔ udp-only | socks5://    |
++-------------------+------------+------------+------------+------------+--------------+
+| shadowsocks       | ✔          | ✔          | ✔          | ✔          | ss://        |
++-------------------+------------+------------+------------+------------+--------------+
+| shadowsocks aead  | ✔          | ✔          |            |            | ss://        |
++-------------------+------------+------------+------------+------------+--------------+
+| shadowsocksR      | ✔          | ✔          |            |            | ssr://       |
++-------------------+------------+------------+------------+------------+--------------+
+| iptables nat      | ✔          |            |            |            | redir://     |
++-------------------+------------+------------+------------+------------+--------------+
+| pfctl nat (macos) | ✔          |            |            |            | pf://        |
++-------------------+------------+------------+------------+------------+--------------+
+| echo              | ✔          |            |            |            | echo://      |
++-------------------+------------+------------+------------+------------+--------------+
+| tunnel            | ✔          | ✔          | ✔          | ✔          | tunnel://    |
+| (raw socket)      |            |            |            |            | tunnel{ip}://|
++-------------------+------------+------------+------------+------------+--------------+
+| AUTO DETECT       | ✔          |            | ✔          |            | a+b+c+d://   |
++-------------------+------------+------------+------------+------------+--------------+
 
 URI Syntax
 ----------
@@ -196,6 +204,10 @@ URI Syntax
     | ssl    | unsecured ssl/tls (no cert) |
     +--------+-----------------------------+
     | secure | secured ssl/tls (cert)      |
+    +--------+-----------------------------+
+    | tunnel | raw connection              |
+    +--------+-----------------------------+
+    | echo   | echo-back service           |
     +--------+-----------------------------+
     | direct | direct connection           |
     +--------+-----------------------------+
@@ -451,3 +463,36 @@ Examples
 
   *pproxy* will connect to server1 first, tell server1 connect to server2, and tell server2 connect to server3, and make real traffic by server3.
 
+- Raw connection tunnel
+
+  TCP raw connection tunnel example:
+
+  .. code:: rst
+
+    $ pproxy -i tunnel{google.com}://:80
+    $ curl -H "Host: google.com" http://localhost
+
+  UDP dns tunnel example:
+
+  .. code:: rst
+
+    $ pproxy -ui tunnel{8.8.8.8}://:53
+    $ nslookup google.com localhost
+
+- UDP more complicated example
+
+  Run the shadowsocks udp proxy on remote machine:
+
+  .. code:: rst
+
+    $ pproxy -ui ss://remote_server:13245
+
+  Run the commands on local machine:
+
+  .. code:: rst
+
+    $ pproxy -ui tunnel{8.8.8.8}://:53 -ur ss://remote_server:13245
+    UDP tunnel 127.0.0.1:60573 -> ss remote_server:13245 -> 8.8.8.8:53
+    UDP tunnel 127.0.0.1:60574 -> ss remote_server:13245 -> 8.8.8.8:53
+    ...
+    $ nslookup google.com localhost
