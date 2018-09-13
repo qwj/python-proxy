@@ -1,6 +1,6 @@
 import hashlib, struct, base64
 
-from pproxy.cipher import BaseCipher, AEADCipher
+from .cipher import BaseCipher, AEADCipher
 
 # Pure Python Ciphers
 

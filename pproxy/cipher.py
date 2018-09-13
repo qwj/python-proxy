@@ -185,10 +185,21 @@ class DES_CFB_Cipher(BaseCipher):
         from Crypto.Cipher import DES
         self.cipher = DES.new(self.key, DES.MODE_CFB, iv=self.iv, segment_size=64)
 
+class PacketCipher:
+    def __init__(self, cipher, key, name):
+        self.cipher = lambda iv=None: cipher(key).setup_iv(iv)
+        self.ivlen = cipher.IV_LENGTH
+        self.name = name
+    def decrypt(self, data):
+        return self.cipher(data[:self.ivlen]).decrypt(data[self.ivlen:])
+    def encrypt(self, data):
+        cipher = self.cipher()
+        return cipher.iv+cipher.encrypt(data)
+
 MAP = {cls.name(): cls for name, cls in globals().items() if name.endswith('_Cipher')}
 
 def get_cipher(cipher_key):
-    from pproxy.cipherpy import MAP as MAP_PY
+    from .cipherpy import MAP as MAP_PY
     cipher, key = cipher_key.split(':')
     cipher_name, ota, _ = cipher.partition('!')
     if cipher_name not in MAP and cipher_name not in MAP_PY and not (cipher_name.endswith('-py') and cipher_name[:-3] in MAP_PY):
@@ -207,6 +218,7 @@ def get_cipher(cipher_key):
             cipher = MAP_PY.get(cipher_name)
     if cipher is None:
         return 'this cipher needs library: "pip3 install pycryptodome"', None
+    cipher_name += ('-py' if cipher.PYTHON else '')
     def apply_cipher(reader, writer, pdecrypt, pdecrypt2, pencrypt, pencrypt2):
         reader_cipher, writer_cipher = cipher(key, ota=ota), cipher(key, ota=ota)
         reader_cipher._buffer = b''
@@ -247,8 +259,9 @@ def get_cipher(cipher_key):
         return reader_cipher, writer_cipher
     apply_cipher.cipher = cipher
     apply_cipher.key = key
-    apply_cipher.name = cipher_name + ('-py' if cipher.PYTHON else '')
+    apply_cipher.name = cipher_name
     apply_cipher.ota = ota
     apply_cipher.plugins = []
+    apply_cipher.datagram = PacketCipher(cipher, key, cipher_name)
     return None, apply_cipher
 
