@@ -289,9 +289,9 @@ async def test_url(url, rserver):
 
 def main():
     parser = argparse.ArgumentParser(description=__description__+'\nSupported protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect,pf,tunnel', epilog=f'Online help: <{__url__}>')
-    parser.add_argument('-i', dest='listen', default=[], action='append', type=ProxyURI.compile, help='tcp server uri (default: http+socks4+socks5://:8080/)')
+    parser.add_argument('-l', dest='listen', default=[], action='append', type=ProxyURI.compile, help='tcp server uri (default: http+socks4+socks5://:8080/)')
     parser.add_argument('-r', dest='rserver', default=[], action='append', type=ProxyURI.compile_relay, help='tcp remote server uri (default: direct)')
-    parser.add_argument('-ui', dest='ulisten', default=[], action='append', type=ProxyURI.compile, help='udp server setting uri (default: none)')
+    parser.add_argument('-ul', dest='ulisten', default=[], action='append', type=ProxyURI.compile, help='udp server setting uri (default: none)')
     parser.add_argument('-ur', dest='urserver', default=[], action='append', type=ProxyURI.compile_relay, help='udp remote server uri (default: direct)')
     parser.add_argument('-b', dest='block', type=pattern_compile, help='block regex rules')
     parser.add_argument('-a', dest='alived', default=0, type=int, help='interval to check remote alive (default: no check)')
