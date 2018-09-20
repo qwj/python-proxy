@@ -1,4 +1,4 @@
-import argparse, time, re, asyncio, functools, base64, urllib.parse
+import argparse, time, re, asyncio, functools, base64, random, urllib.parse
 from . import proto
 from .__doc__ import *
 
@@ -33,7 +33,24 @@ async def prepare_ciphers(cipher, reader, writer, bind=None, server_side=True):
     else:
         return None, None
 
-async def stream_handler(reader, writer, unix, lbind, protos, rserver, block, cipher, verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
+def schedule(rserver, salgorithm, host_name):
+    filter_cond = lambda o: o.alive and (not o.match or o.match(host_name))
+    if salgorithm == 'fa':
+        return next(filter(filter_cond, rserver), None)
+    elif salgorithm == 'rr':
+        for i, roption in enumerate(rserver):
+            if filter_cond(roption):
+                rserver.append(rserver.pop(i))
+                return roption
+    elif salgorithm == 'rc':
+        filters = [i for i in rserver if filter_cond(i)]
+        return random.choice(filters) if filters else None
+    elif salgorithm == 'lc':
+        return min(filter(filter_cond, rserver), default=None, key=lambda i: i.total)
+    else:
+        raise Exception('Unknown scheduling algorithm') #Unreachable
+
+async def stream_handler(reader, writer, unix, lbind, protos, rserver, block, cipher, salgorithm, verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
     try:
         if unix:
             remote_ip, server_ip, remote_text = 'local', None, 'unix_local'
@@ -51,8 +68,8 @@ async def stream_handler(reader, writer, unix, lbind, protos, rserver, block, ci
         elif block and block(host_name):
             raise Exception('BLOCK ' + host_name)
         else:
-            roption = next(filter(lambda o: o.alive and (not o.match or o.match(host_name)), rserver), None)
-            verbose(f'{lproto.name} {remote_text}' + roption.logtext(host_name, port))
+            roption = schedule(rserver, salgorithm, host_name) or ProxyURI.DIRECT
+            verbose(f'{lproto.name} {remote_text}{roption.logtext(host_name, port)}')
             try:
                 reader_remote, writer_remote = await asyncio.wait_for(roption.open_connection(host_name, port, local_addr, lbind), timeout=SOCKET_TIMEOUT)
             except asyncio.TimeoutError:
@@ -66,14 +83,14 @@ async def stream_handler(reader, writer, unix, lbind, protos, rserver, block, ci
             m = modstat(remote_ip, host_name)
             lchannel = lproto.http_channel if initbuf else lproto.channel
             asyncio.ensure_future(lproto.channel(reader_remote, writer, m(2+roption.direct), m(4+roption.direct)))
-            asyncio.ensure_future(lchannel(reader, writer_remote, m(roption.direct), DUMMY))
+            asyncio.ensure_future(lchannel(reader, writer_remote, m(roption.direct), roption.connection_change))
     except Exception as ex:
         if not isinstance(ex, asyncio.TimeoutError) and not str(ex).startswith('Connection closed'):
             verbose(f'{str(ex) or "Unsupported protocol"} from {remote_ip}')
         try: writer.close()
         except Exception: pass
 
-async def datagram_handler(writer, data, addr, protos, urserver, block, cipher, verbose=DUMMY, **kwargs):
+async def datagram_handler(writer, data, addr, protos, urserver, block, cipher, salgorithm, verbose=DUMMY, **kwargs):
     try:
         remote_ip, remote_port, *_ = addr
         remote_text = f'{remote_ip}:{remote_port}'
@@ -86,8 +103,8 @@ async def datagram_handler(writer, data, addr, protos, urserver, block, cipher, 
         elif block and block(host_name):
             raise Exception('BLOCK ' + host_name)
         else:
-            roption = next(filter(lambda o: not o.match or o.match(host_name), urserver), None)
-            verbose(f'UDP {lproto.name} {remote_text}' + roption.logtext(host_name, port))
+            roption = schedule(urserver, salgorithm, host_name) or ProxyURI.DIRECT
+            verbose(f'UDP {lproto.name} {remote_text}{roption.logtext(host_name, port)}')
             data = roption.prepare_udp_connection(host_name, port, data)
             def reply(rdata):
                 writer.sendto(cipher.datagram.encrypt(rdata) if cipher else rdata, addr)
@@ -124,6 +141,7 @@ def pattern_compile(filename):
 class ProxyURI(object):
     def __init__(self, **kw):
         self.__dict__.update(kw)
+        self.total = 0
         self.udpmap = {}
     def logtext(self, host, port):
         if self.direct:
@@ -132,6 +150,8 @@ class ProxyURI(object):
             return f' ->{(" ssl" if self.sslclient else "")} {self.bind}'
         else:
             return f' -> {self.rproto.name+("+ssl" if self.sslclient else "")} {self.bind}' + self.relay.logtext(host, port)
+    def connection_change(self, delta):
+        self.total += delta
     async def open_udp_connection(self, host, port, data, addr, reply):
         class Protocol(asyncio.DatagramProtocol):
             def __init__(prot, data):
@@ -155,6 +175,9 @@ class ProxyURI(object):
         if addr in self.udpmap:
             self.udpmap[addr].new_data_arrived(data)
         else:
+            if self.direct and host == 'tunnel':
+                raise Exception('Unknown tunnel endpoint')
+            self.connection_change(1)
             prot = Protocol(data)
             remote_addr = (host, port) if self.direct else (self.host_name, self.port)
             await asyncio.get_event_loop().create_datagram_endpoint(lambda: prot, remote_addr=remote_addr)
@@ -175,6 +198,8 @@ class ProxyURI(object):
         return loop.create_datagram_endpoint(Protocol, local_addr=(self.host_name, self.port))
     def open_connection(self, host, port, local_addr, lbind):
         if self.direct:
+            if host == 'tunnel':
+                raise Exception('Unknown tunnel endpoint')
             local_addr = local_addr if lbind == 'in' else (lbind, 0) if lbind else None
             return asyncio.open_connection(host=host, port=port, local_addr=local_addr)
         elif self.unix:
@@ -295,6 +320,7 @@ def main():
     parser.add_argument('-ur', dest='urserver', default=[], action='append', type=ProxyURI.compile_relay, help='udp remote server uri (default: direct)')
     parser.add_argument('-b', dest='block', type=pattern_compile, help='block regex rules')
     parser.add_argument('-a', dest='alived', default=0, type=int, help='interval to check remote alive (default: no check)')
+    parser.add_argument('-s', dest='salgorithm', default='fa', choices=('fa', 'rr', 'rc', 'lc'), help='scheduling algorithm (default: first_available)')
     parser.add_argument('-v', dest='v', action='count', help='print verbose output')
     parser.add_argument('--ssl', dest='sslfile', help='certfile[,keyfile] if server listen in ssl mode')
     parser.add_argument('--pac', help='http PAC path')
@@ -308,10 +334,6 @@ def main():
         return
     if not args.listen and not args.ulisten:
         args.listen.append(ProxyURI.compile_relay('http+socks4+socks5://:8080/'))
-    if not args.rserver or args.rserver[-1].match:
-        args.rserver.append(ProxyURI.DIRECT)
-    if not args.urserver or args.urserver[-1].match:
-        args.urserver.append(ProxyURI.DIRECT)
     args.httpget = {}
     if args.pac:
         pactext = 'function FindProxyForURL(u,h){' + (f'var b=/^(:?{args.block.__self__.pattern})$/i;if(b.test(h))return "";' if args.block else '')

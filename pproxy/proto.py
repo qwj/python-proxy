@@ -244,8 +244,9 @@ class HTTP(BaseProtocol):
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
         writer_remote.write(f'CONNECT {host_name}:{port} HTTP/1.1'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
         await reader_remote.read_until(b'\r\n\r\n')
-    async def http_channel(self, reader, writer, stat_bytes, _):
+    async def http_channel(self, reader, writer, stat_bytes, stat_conn):
         try:
+            stat_conn(1)
             while True:
                 data = await reader.read_()
                 if not data:
@@ -266,6 +267,7 @@ class HTTP(BaseProtocol):
         except Exception:
             pass
         finally:
+            stat_conn(-1)
             writer.close()
 
 class Transparent(BaseProtocol):
