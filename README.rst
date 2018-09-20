@@ -72,74 +72,9 @@ Features
 - PyPy3 support with JIT speedup.
 - System proxy auto-setting support.
 - UDP proxy client/server support.
+- Schedule (load balance) among remote servers.
 
 .. _One-Time-Auth: https://shadowsocks.org/en/spec/one-time-auth.html
-
-Python3
--------
-
-*Python 3.5* added new syntax **async def** and **await** to make asyncio programming easier. *Python 3.6* added new syntax **formatted string literals**. This tool was to demonstrate these new syntax, so the minimal Python requirement was **3.6**.
-
-From **pproxy** 1.1.0, the minimal Python requirement is **3.3**, since old python versions are still widely used and PyPy3 only has 3.3 support currently. *Python 2* will not be supported in the future.
-
-From **proxy** 1.3.0, the minimal Python requirement is **3.6**, since **Python 3.7** make the **async**/**await**/ reserved words, we cannot make pproxy compatible with older versions.
-
-PyPy3
------
-
-.. code:: rst
-
-  $ pypy3 -m ensurepip
-  $ pypy3 -m pip install asyncio pproxy
-
-Requirement
------------
-
-pycryptodome_ is an optional library to enable faster (C version) cipher. **pproxy** has many built-in pure python ciphers. They are lightweight and stable, but slower than C ciphers. After speedup with PyPy_, the pure python ciphers can get similar performance as C version. If the performance is important and don't have PyPy_, install pycryptodome_ instead.
-
-These are some performance benchmarks between Python and C ciphers (dataset: 8M):
-
-+---------------------+----------------+
-| chacha20-c          | 0.64 secs      |
-+---------------------+----------------+
-| chacha20-py (pypy3) | 1.32 secs      |
-+---------------------+----------------+
-| chacha20-py         | 48.86 secs     |
-+---------------------+----------------+
-
-.. _pycryptodome: https://pycryptodome.readthedocs.io/en/latest/src/introduction.html
-.. _PyPy: http://pypy.org
-
-Usage
------
-
-.. code:: rst
-
-  $ pproxy -h
-  usage: pproxy [-h] [-l LISTEN] [-r RSERVER] [-ul ULISTEN] [-ur URSERVER]
-                [-b BLOCK] [-a ALIVED] [-v] [--ssl SSLFILE] [--pac PAC]
-                [--get GETS] [--sys] [--test TESTURL] [--version]
-  
-  Proxy server that can tunnel among remote servers by regex rules. Supported
-  protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect,pf,tunnel
-  
-  optional arguments:
-    -h, --help     show this help message and exit
-    -l LISTEN      tcp server uri (default: http+socks4+socks5://:8080/)
-    -r RSERVER     tcp remote server uri (default: direct)
-    -ul ULISTEN    udp server setting uri (default: none)
-    -ur URSERVER   udp remote server uri (default: direct)
-    -b BLOCK       block regex rules
-    -a ALIVED      interval to check remote alive (default: no check)
-    -v             print verbose output
-    --ssl SSLFILE  certfile[,keyfile] if server listen in ssl mode
-    --pac PAC      http PAC path
-    --get GETS     http custom {path,file}
-    --sys          change system proxy setting (mac, windows)
-    --test TEST    test this url for all remote proxies and exit
-    --version      show program's version number and exit
-  
-  Online help: <https://github.com/qwj/python-proxy>
 
 Protocols
 ---------
@@ -174,6 +109,78 @@ Protocols
 +-------------------+------------+------------+------------+------------+--------------+
 | AUTO DETECT       | ✔          |            | ✔          |            | a+b+c+d://   |
 +-------------------+------------+------------+------------+------------+--------------+
+
+Scheduling Algorithms
+---------------------
+
++-------------------+------------+------------+------------+------------+
+| Name              | TCP        | UDP        | Parameter  | Default    |
++===================+============+============+============+============+
+| first_available   | ✔          | ✔          | -s fa      | ✔          |
++-------------------+------------+------------+------------+------------+
+| round_robin       | ✔          | ✔          | -s rr      |            |
++-------------------+------------+------------+------------+------------+
+| random_choice     | ✔          | ✔          | -s rc      |            |
++-------------------+------------+------------+------------+------------+
+| least_connection  | ✔          |            | -s lc      |            |
++-------------------+------------+------------+------------+------------+
+
+Requirement
+-----------
+
+pycryptodome_ is an optional library to enable faster (C version) cipher. **pproxy** has many built-in pure python ciphers. They are lightweight and stable, but slower than C ciphers. After speedup with PyPy_, pure python ciphers can get similar performance as C version. If the performance is important and don't have PyPy_, install pycryptodome_ instead.
+
+These are some performance benchmarks between Python and C ciphers (dataset: 8M):
+
++---------------------+----------------+
+| chacha20-c          | 0.64 secs      |
++---------------------+----------------+
+| chacha20-py (pypy3) | 1.32 secs      |
++---------------------+----------------+
+| chacha20-py         | 48.86 secs     |
++---------------------+----------------+
+
+PyPy3 Quickstart:
+
+.. code:: rst
+
+  $ pypy3 -m ensurepip
+  $ pypy3 -m pip install asyncio pproxy
+
+.. _pycryptodome: https://pycryptodome.readthedocs.io/en/latest/src/introduction.html
+.. _PyPy: http://pypy.org
+
+Usage
+-----
+
+.. code:: rst
+
+  $ pproxy -h
+  usage: pproxy [-h] [-l LISTEN] [-r RSERVER] [-ul ULISTEN] [-ur URSERVER]
+                [-b BLOCK] [-a ALIVED] [-v] [--ssl SSLFILE] [--pac PAC]
+                [--get GETS] [--sys] [--test TESTURL] [--version]
+  
+  Proxy server that can tunnel among remote servers by regex rules. Supported
+  protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect,pf,tunnel
+  
+  optional arguments:
+    -h, --help        show this help message and exit
+    -l LISTEN         tcp server uri (default: http+socks4+socks5://:8080/)
+    -r RSERVER        tcp remote server uri (default: direct)
+    -ul ULISTEN       udp server setting uri (default: none)
+    -ur URSERVER      udp remote server uri (default: direct)
+    -b BLOCK          block regex rules
+    -a ALIVED         interval to check remote alive (default: no check)
+    -s {fa,rr,rc,lc}  scheduling algorithm (default: first_available)
+    -v                print verbose output
+    --ssl SSLFILE     certfile[,keyfile] if server listen in ssl mode
+    --pac PAC         http PAC path
+    --get GETS        http custom {path,file}
+    --sys             change system proxy setting (mac, windows)
+    --test TEST       test this url for all remote proxies and exit
+    --version         show program's version number and exit
+  
+  Online help: <https://github.com/qwj/python-proxy>
 
 URI Syntax
 ----------
@@ -354,7 +361,7 @@ Examples
 
   .. code:: rst
 
-    $ pproxy -r http://aa.bb.cc.dd:8080?rules -v
+    $ pproxy -r http://aa.bb.cc.dd:8080?rules -vv
     Serving on :8080 by http,socks4,socks5
     http ::1:57768 -> http aa.bb.cc.dd:8080 -> www.googleapis.com:443
     http ::1:57772 -> www.yahoo.com:80
@@ -368,7 +375,7 @@ Examples
 
   .. code:: rst
 
-    $ pproxy -l ss://:8888 -r ss://chacha20:cipher_key@aa.bb.cc.dd:12345 -v
+    $ pproxy -l ss://:8888 -r ss://chacha20:cipher_key@aa.bb.cc.dd:12345 -vv
 
   Next, run pproxy.py remotely on server "aa.bb.cc.dd". The base64 encoded string of "chacha20:cipher_key" is also supported:
 
@@ -437,7 +444,7 @@ Examples
   .. code:: rst
 
     $ sudo iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 5555
-    $ pproxy -l redir://:5555 -r http://remote_http_server:3128 -v
+    $ pproxy -l redir://:5555 -r http://remote_http_server:3128 -vv
 
   The above example illustrates how to redirect all local output tcp traffic with destination port 80 to localhost port 5555 listened by **pproxy**, and then tunnel the traffic to remote http proxy.
 
@@ -449,7 +456,7 @@ Examples
     rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port 8080
     pass out on en0 route-to lo0 inet proto tcp from any to any port 80 keep state
     ^D
-    $ sudo pproxy -l pf://:8080 -r socks5://remote_socks5_server:1324 -v
+    $ sudo pproxy -l pf://:8080 -r socks5://remote_socks5_server:1324 -vv
 
   Make sure **pproxy** runs in root mode (sudo), otherwise it cannot redirect pf packet.
 
@@ -491,8 +498,26 @@ Examples
 
   .. code:: rst
 
-    $ pproxy -ul tunnel{8.8.8.8}://:53 -ur ss://remote_server:13245
+    $ pproxy -ul tunnel{8.8.8.8}://:53 -ur ss://remote_server:13245 -vv
     UDP tunnel 127.0.0.1:60573 -> ss remote_server:13245 -> 8.8.8.8:53
     UDP tunnel 127.0.0.1:60574 -> ss remote_server:13245 -> 8.8.8.8:53
     ...
     $ nslookup google.com localhost
+
+- Load balance example
+
+  Specify multiple -r server, and a scheduling algorithm (rr = round_robin, rc = random_choice, lc = least_connection):
+
+  .. code:: rst
+
+    $ pproxy -r http://server1 -r ss://server2 -r socks5://server3 -s rr -vv
+    http ::1:42356 -> http server1 -> google.com:443
+    http ::1:42357 -> ss server2 -> google.com:443
+    http ::1:42358 -> socks5 server3 -> google.com:443
+    http ::1:42359 -> http server1 -> google.com:443
+    ...
+    $ pproxy -ul tunnel://:53 -ur tunnel://8.8.8.8:53 -ur tunnel://8.8.4.4:53 -s rc -vv
+    UDP tunnel ::1:35378 -> tunnel 8.8.8.8:53
+    UDP tunnel ::1:35378 -> tunnel 8.8.4.4:53
+    ...
+
