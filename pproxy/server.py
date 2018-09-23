@@ -218,7 +218,7 @@ class ProxyURI(object):
         if self.unix:
             return asyncio.start_unix_server(handler, path=self.bind, ssl=self.sslserver)
         else:
-            return asyncio.start_server(handler, host=self.host_name, port=self.port, ssl=self.sslserver)
+            return asyncio.start_server(handler, host=self.host_name, port=self.port, ssl=self.sslserver, reuse_port=args.reuse)
     @classmethod
     def compile_relay(cls, uri):
         tail = cls.DIRECT
@@ -327,6 +327,7 @@ def main():
     parser.add_argument('--get', dest='gets', default=[], action='append', help='http custom {path,file}')
     parser.add_argument('--sys', action='store_true', help='change system proxy setting (mac, windows)')
     parser.add_argument('--test', help='test this url for all remote proxies and exit')
+    parser.add_argument('--reuse', help='set SO_REUSEPORT (Linux only)', dest='reuse', action='store_true')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
     if args.test:
