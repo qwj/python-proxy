@@ -255,17 +255,23 @@ class ProxyURI(object):
                 if not self.streams.done():
                     await self.streams
                 return self.streams.result()
-        if self.direct:
-            if host == 'tunnel':
-                raise Exception('Unknown tunnel endpoint')
-            local_addr = local_addr if lbind == 'in' else (lbind, 0) if lbind else None
-            wait = asyncio.open_connection(host=host, port=port, local_addr=local_addr)
-        elif self.unix:
-            wait = asyncio.open_unix_connection(path=self.bind, ssl=self.sslclient, server_hostname='' if self.sslclient else None)
-        else:
-            local_addr = local_addr if self.lbind == 'in' else (self.lbind, 0) if self.lbind else None
-            wait = asyncio.open_connection(host=self.host_name, port=self.port, ssl=self.sslclient, local_addr=local_addr)
-        reader, writer = await asyncio.wait_for(wait, timeout=SOCKET_TIMEOUT)
+        try:
+            if self.direct:
+                if host == 'tunnel':
+                    raise Exception('Unknown tunnel endpoint')
+                local_addr = local_addr if lbind == 'in' else (lbind, 0) if lbind else None
+                wait = asyncio.open_connection(host=host, port=port, local_addr=local_addr)
+            elif self.unix:
+                wait = asyncio.open_unix_connection(path=self.bind, ssl=self.sslclient, server_hostname='' if self.sslclient else None)
+            else:
+                local_addr = local_addr if self.lbind == 'in' else (self.lbind, 0) if self.lbind else None
+                wait = asyncio.open_connection(host=self.host_name, port=self.port, ssl=self.sslclient, local_addr=local_addr)
+            reader, writer = await asyncio.wait_for(wait, timeout=SOCKET_TIMEOUT)
+        except Exception as ex:
+            if self.reuse:
+                self.streams.set_exception(ex)
+                self.streams = None
+            raise
         return reader, writer
     def prepare_connection(self, reader_remote, writer_remote, host, port):
         if self.reuse and not self.handler:
