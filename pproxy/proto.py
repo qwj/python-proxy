@@ -418,6 +418,7 @@ class Pack(BaseProtocol):
                         writer.write(b'\x30'+sid+len(data).to_bytes(2,'big')+data)
                 self.udpmap[sid] = (host_name, port, sendto)
                 return self.udpmap[sid]
+        writer.get_extra_info('socket').setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         return Handler()
 
 async def parse(protos, reader, **kw):
