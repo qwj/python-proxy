@@ -1,4 +1,4 @@
-import asyncio, socket, urllib.parse, time, re, base64, hmac, struct, hashlib, fcntl, io, os
+import asyncio, socket, urllib.parse, time, re, base64, hmac, struct, hashlib, io, os
 
 HTTP_LINE = re.compile('([^ ]+) +(.+?) +(HTTP/[^ ]+)$')
 packstr = lambda s, n=1: len(s).to_bytes(n, 'big') + s
@@ -312,6 +312,7 @@ class Redir(Transparent):
 class Pf(Transparent):
     def query_remote(self, sock):
         try:
+            import fcntl
             src = sock.getpeername()
             dst = sock.getsockname()
             src_ip = socket.inet_pton(sock.family, src[0])
