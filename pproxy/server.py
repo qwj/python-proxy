@@ -289,7 +289,7 @@ class ProxyURI(object):
                     self.streams.set_result((reader_remote, writer_remote))
                 reader_remote, writer_remote = handler.connect(whost, wport)
             else:
-                await self.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=self.auth, host_name=whost, port=wport, writer_cipher_r=writer_cipher_r, sock=writer_remote.get_extra_info('socket'))
+                await self.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=self.auth, host_name=whost, port=wport, writer_cipher_r=writer_cipher_r, myhost=self.host_name, sock=writer_remote.get_extra_info('socket'))
             return await self.relay.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port, handler)
         return reader_remote, writer_remote
     def start_server(self, args, option):

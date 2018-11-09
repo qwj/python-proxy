@@ -243,8 +243,8 @@ class HTTP(BaseProtocol):
             port = url.port or 80
             newpath = url._replace(netloc='', scheme='').geturl()
             return host_name, port, f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode()
-    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
-        writer_remote.write(f'CONNECT {host_name}:{port} HTTP/1.1'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
+        writer_remote.write(f'CONNECT {host_name}:{port} HTTP/1.1\r\nHost: {myhost}'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
         await reader_remote.read_until(b'\r\n\r\n')
     async def http_channel(self, reader, writer, stat_bytes, stat_conn):
         try:
@@ -338,6 +338,84 @@ class Tunnel(Transparent):
         writer_remote.write(rauth)
     def udp_connect(self, rauth, host_name, port, data, **kw):
         return rauth + data
+
+class WS(BaseProtocol):
+    def correct_header(self, header, **kw):
+        return header and header.isalpha()
+    def patch_ws_stream(self, reader, writer, masked=False):
+        data_len, mask_key, _buffer = None, None, bytearray()
+        def feed_data(s, o=reader.feed_data):
+            nonlocal data_len, mask_key
+            _buffer.extend(s)
+            while 1:
+                if data_len is None:
+                    if len(_buffer) < 2:
+                        break
+                    required = 2 + (4 if _buffer[1]&128 else 0)
+                    p = _buffer[1] & 127
+                    required += 2 if p == 126 else 4 if p == 127 else 0
+                    if len(_buffer) < required:
+                        break
+                    data_len = int.from_bytes(_buffer[2:4], 'big') if p == 126 else int.from_bytes(_buffer[2:6], 'big') if p == 127 else p
+                    mask_key = _buffer[required-4:required] if _buffer[1]&128 else None
+                    del _buffer[:required]
+                else:
+                    if len(_buffer) < data_len:
+                        break
+                    data = _buffer[:data_len]
+                    if mask_key:
+                        data = bytes(data[i]^mask_key[i%4] for i in range(data_len))
+                    del _buffer[:data_len]
+                    data_len = None
+                    o(data)
+        reader.feed_data = feed_data
+        if reader._buffer:
+            reader._buffer, buf = bytearray(), reader._buffer
+            feed_data(buf)
+        def write(data, o=writer.write):
+            if not data: return
+            data_len = len(data)
+            if masked:
+                mask_key = os.urandom(4)
+                data = bytes(data[i]^mask_key[i%4] for i in range(data_len))
+                return o(b'\x02' + (bytes([data_len|0x80]) if data_len < 126 else b'\xfe'+data_len.to_bytes(2, 'big') if data_len < 65536 else b'\xff'+data_len.to_bytes(4, 'big')) + mask_key + data)
+            else:
+                return o(b'\x02' + (bytes([data_len]) if data_len < 126 else b'\x7e'+data_len.to_bytes(2, 'big') if data_len < 65536 else b'\x7f'+data_len.to_bytes(4, 'big')) + data)
+        writer.write = write
+    async def parse(self, header, reader, writer, auth, authtable, sock, **kw):
+        lines = header + await reader.read_until(b'\r\n\r\n')
+        headers = lines[:-4].decode().split('\r\n')
+        method, path, ver = HTTP_LINE.match(headers.pop(0)).groups()
+        lines = '\r\n'.join(i for i in headers if not i.startswith('Proxy-'))
+        headers = dict(i.split(': ', 1) for i in headers if ': ' in i)
+        url = urllib.parse.urlparse(path)
+        if auth:
+            pauth = headers.get('Proxy-Authorization', None)
+            httpauth = 'Basic ' + base64.b64encode(auth).decode()
+            if not authtable.authed() and pauth != httpauth:
+                writer.write(f'{ver} 407 Proxy Authentication Required\r\nConnection: close\r\nProxy-Authenticate: Basic realm="simple"\r\n\r\n'.encode())
+                raise Exception('Unauthorized WebSocket')
+            authtable.set_authed()
+        if method != 'GET':
+            raise Exception(f'Unsupported method {method}')
+        if headers.get('Sec-WebSocket-Key', None) is None:
+            raise Exception(f'Unsupported headers {headers}')
+        seckey = base64.b64decode(headers.get('Sec-WebSocket-Key'))
+        rseckey = base64.b64encode(hashlib.sha1(seckey+b'amtf').digest()[:16]).decode()
+        writer.write(f'{ver} 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {rseckey}\r\nSec-WebSocket-Protocol: chat\r\n\r\n'.encode())
+        self.patch_ws_stream(reader, writer, False)
+        if not self.param:
+            return 'tunnel', 0, b''
+        host, _, port = self.param.partition(':')
+        dst = sock.getsockname()
+        host = host or dst[0]
+        port = int(port) if port else dst[1]
+        return host, port, b''
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
+        seckey = base64.b64encode(os.urandom(16)).decode()
+        writer_remote.write(f'GET / HTTP/1.1\r\nHost: {myhost}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {seckey}\r\nSec-WebSocket-Protocol: chat\r\nSec-WebSocket-Version: 13'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
+        await reader_remote.read_until(b'\r\n\r\n')
+        self.patch_ws_stream(reader_remote, writer_remote, True)
 
 class Echo(Transparent):
     def query_remote(self, sock):
@@ -444,7 +522,7 @@ def udp_parse(protos, data, **kw):
             return (proto,) + ret
     raise Exception(f'Unsupported protocol {data[:10]}')
 
-MAPPINGS = dict(direct=Direct, http=HTTP, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, pack=Pack, ssl='', secure='')
+MAPPINGS = dict(direct=Direct, http=HTTP, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, pack=Pack, ws=WS, ssl='', secure='')
 
 def get_protos(rawprotos):
     protos = []
