@@ -56,7 +56,7 @@ Run With Docker
 
 `pproxy` Docker container comes with C optimizations pre-installed.
 
-```docker run -it -p 8080:8080 mosajjal/pproxy:1.9.1 pproxy -l http://:8080 -vv```
+```docker run -it -p 8080:8080 mosajjal/pproxy pproxy -l http://:8080 -vv```
 
 Features
 --------
