@@ -2,7 +2,7 @@ from setuptools import setup
 import os, re
 
 def read(*names, **kwargs):
-    with open(os.path.join(os.path.dirname(__file__), *names)) as fp:
+    with open(os.path.join(os.path.dirname(__file__), *names), encoding='utf8') as fp:
         return fp.read()
 
 def find_value(name):

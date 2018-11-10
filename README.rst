@@ -92,6 +92,8 @@ Protocols
 +-------------------+------------+------------+------------+------------+--------------+
 | socks5            | ✔          | ✔          | ✔ udp-only | ✔ udp-only | socks5://    |
 +-------------------+------------+------------+------------+------------+--------------+
+| socks5 over TLS   | ✔          | ✔          |            |            | socks5+ssl://|
++-------------------+------------+------------+------------+------------+--------------+
 | shadowsocks       | ✔          | ✔          | ✔          | ✔          | ss://        |
 +-------------------+------------+------------+------------+------------+--------------+
 | shadowsocks aead  | ✔          | ✔          |            |            | ss://        |
@@ -106,6 +108,11 @@ Protocols
 +-------------------+------------+------------+------------+------------+--------------+
 | tunnel            | ✔          | ✔          | ✔          | ✔          | tunnel://    |
 | (raw socket)      |            |            |            |            | tunnel{ip}://|
++-------------------+------------+------------+------------+------------+--------------+
+| websocket         | ✔          | ✔          |            |            | ws://        |
+| (simple tunnel)   |            |            |            |            | ws{dst_ip}://|
++-------------------+------------+------------+------------+------------+--------------+
+| xxx over TLS      | ✔          | ✔          |            |            | xxx+ssl://   |
 +-------------------+------------+------------+------------+------------+--------------+
 | AUTO DETECT       | ✔          |            | ✔          |            | a+b+c+d://   |
 +-------------------+------------+------------+------------+------------+--------------+
@@ -213,6 +220,8 @@ URI Syntax
     | secure | secured ssl/tls (cert)      |
     +--------+-----------------------------+
     | tunnel | raw connection              |
+    +--------+-----------------------------+
+    | ws     | websocket connection        |
     +--------+-----------------------------+
     | echo   | echo-back service           |
     +--------+-----------------------------+
@@ -520,4 +529,25 @@ Examples
     UDP tunnel ::1:35378 -> tunnel 8.8.8.8:53
     UDP tunnel ::1:35378 -> tunnel 8.8.4.4:53
     ...
+
+- WebSocket example
+
+  WebSocket protocol is similar to Tunnel protocol. It is raw and doesn't support any proxy function. It can connect to other proxy like Tunnel protocol.
+
+  First run pproxy on remote machine:
+
+  .. code:: rst
+
+    $ pproxy -l ws://:80 -r tunnel:///tmp/myproxy -v
+    $ pproxy -l ss://chacha20:abc@/tmp/myproxy -v
+
+  Run pproxy on local machine:
+
+  .. code:: rst
+
+    $ pproxy -l tunnel://:1234 -r ws://remote_ip:80 -vv
+
+  Then port :1234 on local machine is connected to the /tmp/myproxy on remote machine by WebSocket tunnel. You can specify any proxy protocol details on /tmp/myproxy.
+
+  It is a good practice to use some CDN in the middle of local/remote machines. CDN with WebSocket support can hide remote machine's real IP from public.
 
