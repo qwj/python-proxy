@@ -37,6 +37,10 @@ class BaseProtocol:
         raise Exception(f'{self.name} don\'t support UDP server')
     def udp_connect(self, rauth, host_name, port, data, **kw):
         raise Exception(f'{self.name} don\'t support UDP client')
+    def udp_client(self, data):
+        return data
+    def udp_client2(self, host_name, port, data):
+        return data
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
         raise Exception(f'{self.name} don\'t support client')
     async def channel(self, reader, writer, stat_bytes, stat_conn):
@@ -143,6 +147,17 @@ class SS(BaseProtocol):
             return
         host_name, port = socks_address(reader, n)
         return host_name, port, reader.read()
+    def udp_client(self, data):
+        reader = io.BytesIO(data)
+        n = reader.read(1)[0]
+        host_name, port = socks_address(reader, n)
+        return reader.read()
+    def udp_client2(self, host_name, port, data):
+        try:
+            return b'\x01' + socket.inet_aton(host_name) + port.to_bytes(2, 'big') + data
+        except Exception:
+            pass
+        return b'\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big') + data
     def udp_connect(self, rauth, host_name, port, data, **kw):
         return rauth + b'\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big') + data
 
