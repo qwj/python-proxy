@@ -301,6 +301,19 @@ class ProxyURI(object):
             return asyncio.start_unix_server(handler, path=self.bind, ssl=self.sslserver)
         else:
             return asyncio.start_server(handler, host=self.host_name, port=self.port, ssl=self.sslserver, reuse_port=args.ruport)
+    async def tcp_connect(self, host, port, local_addr=None, lbind=None):
+        reader, writer = await self.open_connection(host, port, local_addr, lbind)
+        try:
+            reader, writer = await self.prepare_connection(reader, writer, host, port)
+        except Exception:
+            writer.close()
+            raise
+        return reader, writer
+    async def udp_sendto(self, host, port, data, answer_cb, local_addr=None):
+        if local_addr is None:
+            local_addr = random.randrange(2**32)
+        data = self.prepare_udp_connection(host, port, data)
+        await self.open_udp_connection(host, port, data, local_addr, answer_cb)
     @classmethod
     def compile_relay(cls, uri):
         tail = cls.DIRECT
