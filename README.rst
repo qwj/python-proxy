@@ -18,7 +18,7 @@ QuickStart
 .. code:: rst
 
   $ pip3 install pproxy
-  Successfully installed pproxy-1.7.0
+  Successfully installed pproxy-1.9.5
   $ pproxy
   Serving on :8080 by http,socks4,socks5
   ^C
@@ -50,9 +50,8 @@ Apply CLI proxy: (MacOS, Linux)
   $ export http_proxy=http://localhost:8080 
   $ export https_proxy=http://localhost:8080 
 
-
 Run With Docker 
-----------
+---------------
 
 `pproxy` Docker container comes with C optimizations pre-installed.
 
@@ -81,6 +80,7 @@ Features
 - System proxy auto-setting support.
 - UDP proxy client/server support.
 - Schedule (load balance) among remote servers.
+- Client UDP/TCP API support.
 
 .. _One-Time-Auth: https://shadowsocks.org/en/spec/one-time-auth.html
 
@@ -348,6 +348,29 @@ URI Syntax
 URIs can be joined by "__" to indicate tunneling by relay. For example, ss://1.2.3.4:1324__http://4.5.6.7:4321 make remote connection to the first shadowsocks proxy server, and then tunnel to the second http proxy server.
 
 .. _AEAD: http://shadowsocks.org/en/spec/AEAD-Ciphers.html
+
+Client API
+----------
+
+- TCP Client API
+
+  .. code:: rst
+
+    conn = pproxy.Connection('ss://aes-256-cfb:password@remote_host:remote_port')
+    reader, writer = await conn.tcp_connect('google.com', 80)
+    writer.write(b'GET / HTTP/1.1\r\n\r\n')
+    data = await reader.read(1024*16)
+    print(data.decode())
+
+- UDP Client API
+
+  .. code:: rst
+
+    conn = pproxy.Connection('ss://chacha20:password@remote_host:remote_port')
+    answer = asyncio.Future()
+    await conn.udp_sendto('8.8.8.8', 53, b'hello the world', answer.set_result)
+    await answer
+    print(answer.result())
 
 Examples
 --------
