@@ -356,21 +356,31 @@ Client API
 
   .. code:: rst
 
-    conn = pproxy.Connection('ss://aes-256-cfb:password@remote_host:remote_port')
-    reader, writer = await conn.tcp_connect('google.com', 80)
-    writer.write(b'GET / HTTP/1.1\r\n\r\n')
-    data = await reader.read(1024*16)
-    print(data.decode())
+    import asyncio, pproxy
+
+    async def test_tcp(proxy_uri):
+        conn = pproxy.Connection(proxy_uri)
+        reader, writer = await conn.tcp_connect('google.com', 80)
+        writer.write(b'GET / HTTP/1.1\r\n\r\n')
+        data = await reader.read(1024*16)
+        print(data.decode())
+
+    asyncio.run(test_tcp('ss://aes-256-cfb:password@remote_host:remote_port'))
 
 - UDP Client API
 
   .. code:: rst
 
-    conn = pproxy.Connection('ss://chacha20:password@remote_host:remote_port')
-    answer = asyncio.Future()
-    await conn.udp_sendto('8.8.8.8', 53, b'hello the world', answer.set_result)
-    await answer
-    print(answer.result())
+    import asyncio, pproxy
+
+    async def test_udp(proxy_uri):
+        conn = pproxy.Connection(proxy_uri)
+        answer = asyncio.Future()
+        await conn.udp_sendto('8.8.8.8', 53, b'hello the world', answer.set_result)
+        await answer
+        print(answer.result())
+
+    asyncio.run(test_udp('ss://chacha20:password@remote_host:remote_port'))
 
 Examples
 --------
