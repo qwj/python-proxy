@@ -38,7 +38,12 @@ async def realtime_stat(stats):
             del history[:1]
 
 def setup(loop, args):
-    args.verbose = lambda s: sys.stdout.write(s+'\x1b[0K\n') and sys.stdout.flush()
+    def verbose(s):
+        if args.v >= 2:
+            sys.stdout.write('\x1b[32m'+time.strftime('%Y-%m-%d %H:%M:%S')+'\x1b[m ')
+        sys.stdout.write(s+'\x1b[0K\n')
+        sys.stdout.flush()
+    args.verbose = verbose
     args.stats = {0: [0]*6}
     def modstat(remote_ip, host_name, stats=args.stats):
         host_name_2 = '.'.join(host_name.split('.')[-3 if host_name.endswith('.com.cn') else -2:]) if host_name.split('.')[-1].isalpha() else host_name
