@@ -239,7 +239,7 @@ class ProxyURI(object):
             self.connection_change(1)
             if len(self.udpmap) > UDP_LIMIT:
                 min_addr = min(self.udpmap, key=lambda x: self.udpmap[x].update)
-                self.udpmap.pop(min_addr).close()
+                self.udpmap.pop(min_addr).transport.close()
             prot = Protocol(data)
             remote_addr = (host, port) if self.direct else (self.host_name, self.port)
             await asyncio.get_event_loop().create_datagram_endpoint(lambda: prot, remote_addr=remote_addr)
