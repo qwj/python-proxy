@@ -4,7 +4,7 @@ from .__doc__ import *
 
 SOCKET_TIMEOUT = 300
 PACKET_SIZE = 65536
-UDP_LIMIT = 150
+UDP_LIMIT = 30
 DUMMY = lambda s: s
 
 asyncio.StreamReader.read_ = lambda self: self.read(PACKET_SIZE)
@@ -239,7 +239,9 @@ class ProxyURI(object):
             self.connection_change(1)
             if len(self.udpmap) > UDP_LIMIT:
                 min_addr = min(self.udpmap, key=lambda x: self.udpmap[x].update)
-                self.udpmap.pop(min_addr).transport.close()
+                prot = self.udpmap.pop(min_addr)
+                if prot.transport:
+                    prot.transport.close()
             prot = Protocol(data)
             remote_addr = (host, port) if self.direct else (self.host_name, self.port)
             await asyncio.get_event_loop().create_datagram_endpoint(lambda: prot, remote_addr=remote_addr)
