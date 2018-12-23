@@ -41,7 +41,9 @@ def setup(loop, args):
     def verbose(s):
         if args.v >= 2:
             sys.stdout.write('\x1b[32m'+time.strftime('%Y-%m-%d %H:%M:%S')+'\x1b[m ')
-        sys.stdout.write(s+'\x1b[0K\n')
+            sys.stdout.write(s+'\x1b[0K\n')
+        else:
+            sys.stdout.write(s+'\n')
         sys.stdout.flush()
     args.verbose = verbose
     args.stats = {0: [0]*6}

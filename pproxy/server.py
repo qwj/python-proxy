@@ -4,6 +4,7 @@ from .__doc__ import *
 
 SOCKET_TIMEOUT = 300
 PACKET_SIZE = 65536
+UDP_LIMIT = 150
 DUMMY = lambda s: s
 
 asyncio.StreamReader.read_ = lambda self: self.read(PACKET_SIZE)
@@ -210,28 +211,35 @@ class ProxyURI(object):
                 self.udpmap[addr] = prot
                 prot.databuf = [data]
                 prot.transport = None
+                prot.update = 0
             def connection_made(prot, transport):
                 prot.transport = transport
                 for data in prot.databuf:
                     transport.sendto(data)
                 prot.databuf.clear()
+                prot.update = time.time()
             def new_data_arrived(prot, data):
                 if prot.transport:
                     prot.transport.sendto(data)
                 else:
                     prot.databuf.append(data)
+                prot.update = time.time()
             def datagram_received(prot, data, addr):
                 data = self.cipher.datagram.decrypt(data) if self.cipher else data
                 data = self.rproto.udp_client(data) if not self.direct else data
                 reply(data)
+                prot.update = time.time()
             def connection_lost(prot, exc):
-                self.udpmap.pop(addr)
+                self.udpmap.pop(addr, None)
         if addr in self.udpmap:
             self.udpmap[addr].new_data_arrived(data)
         else:
             if self.direct and host == 'tunnel':
                 raise Exception('Unknown tunnel endpoint')
             self.connection_change(1)
+            if len(self.udpmap) > UDP_LIMIT:
+                min_addr = min(self.udpmap, key=lambda x: self.udpmap[x].update)
+                self.udpmap.pop(min_addr).close()
             prot = Protocol(data)
             remote_addr = (host, port) if self.direct else (self.host_name, self.port)
             await asyncio.get_event_loop().create_datagram_endpoint(lambda: prot, remote_addr=remote_addr)
