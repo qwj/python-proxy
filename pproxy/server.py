@@ -217,18 +217,18 @@ class ProxyURI(object):
                 for data in prot.databuf:
                     transport.sendto(data)
                 prot.databuf.clear()
-                prot.update = time.time()
+                prot.update = time.perf_counter()
             def new_data_arrived(prot, data):
                 if prot.transport:
                     prot.transport.sendto(data)
                 else:
                     prot.databuf.append(data)
-                prot.update = time.time()
+                prot.update = time.perf_counter()
             def datagram_received(prot, data, addr):
                 data = self.cipher.datagram.decrypt(data) if self.cipher else data
                 data = self.rproto.udp_client(data) if not self.direct else data
                 reply(data)
-                prot.update = time.time()
+                prot.update = time.perf_counter()
             def connection_lost(prot, exc):
                 self.udpmap.pop(addr, None)
         if addr in self.udpmap:
