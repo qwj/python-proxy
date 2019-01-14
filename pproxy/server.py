@@ -394,8 +394,6 @@ async def test_url(url, rserver):
     port = int(port) if port else 80 if url.scheme == 'http' else 443
     initbuf = f'GET {url.path or "/"} HTTP/1.1\r\nHost: {host_name}\r\nUser-Agent: pproxy-{__version__}\r\nConnection: close\r\n\r\n'.encode()
     for roption in rserver:
-        if roption.direct:
-            continue
         print(f'============ {roption.bind} ============')
         try:
             reader, writer = await roption.open_connection(host_name, port, None, None)
@@ -438,7 +436,7 @@ def main():
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
     if args.test:
-        asyncio.run(test_url(args.test, args.rserver))
+        asyncio.get_event_loop().run_until_complete(test_url(args.test, args.rserver))
         return
     if not args.listen and not args.ulisten:
         args.listen.append(ProxyURI.compile_relay('http+socks4+socks5://:8080/'))

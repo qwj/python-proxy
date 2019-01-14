@@ -164,6 +164,19 @@ class AES_192_GCM_Cipher(AES_256_GCM_Cipher):
 class AES_128_GCM_Cipher(AES_256_GCM_Cipher):
     KEY_LENGTH = IV_LENGTH = 16
 
+class ChaCha20_IETF_POLY1305_Cipher(AEADCipher):
+    KEY_LENGTH = 32
+    IV_LENGTH = 32
+    NONCE_LENGTH = 12
+    TAG_LENGTH = 16
+    def decrypt_and_verify(self, buffer, tag):
+        return self.cipher_new(self.nonce).decrypt_and_verify(buffer, tag)
+    def encrypt_and_digest(self, buffer):
+        return self.cipher_new(self.nonce).encrypt_and_digest(buffer)
+    def setup(self):
+        from Crypto.Cipher import ChaCha20_Poly1305
+        self.cipher_new = lambda nonce: ChaCha20_Poly1305.new(key=self.key, nonce=nonce)
+
 class BF_CFB_Cipher(BaseCipher):
     KEY_LENGTH = 16
     IV_LENGTH = 8

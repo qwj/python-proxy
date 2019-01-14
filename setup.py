@@ -37,7 +37,7 @@ setup(
     ],
     extras_require      = {
         'accelerated': [
-            'pycryptodome',
+            'pycryptodome >= 3.7.2',
         ],
     },
     install_requires    = [],
