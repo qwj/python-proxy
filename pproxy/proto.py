@@ -223,14 +223,14 @@ class Socks5(BaseProtocol):
 class HTTP(BaseProtocol):
     def correct_header(self, header, **kw):
         return header and header.isalpha()
-    async def parse(self, header, reader, writer, auth, authtable, httpget, **kw):
+    async def parse(self, header, reader, writer, auth, authtable, httpget=None, **kw):
         lines = header + await reader.read_until(b'\r\n\r\n')
         headers = lines[:-4].decode().split('\r\n')
         method, path, ver = HTTP_LINE.match(headers.pop(0)).groups()
         lines = '\r\n'.join(i for i in headers if not i.startswith('Proxy-'))
         headers = dict(i.split(': ', 1) for i in headers if ': ' in i)
         url = urllib.parse.urlparse(path)
-        if method == 'GET' and not url.hostname:
+        if method == 'GET' and not url.hostname and httpget:
             for path, text in httpget.items():
                 if url.path == path:
                     authtable.set_authed()

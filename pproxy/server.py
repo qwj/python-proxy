@@ -51,7 +51,7 @@ def schedule(rserver, salgorithm, host_name):
     else:
         raise Exception('Unknown scheduling algorithm') #Unreachable
 
-async def stream_handler(reader, writer, unix, lbind, protos, rserver, block, cipher, salgorithm, verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
+async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, block=None, salgorithm='fa', verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
     try:
         if unix:
             remote_ip, server_ip, remote_text = 'local', None, 'unix_local'
@@ -253,13 +253,13 @@ class ProxyURI(object):
             if self.cipher:
                 data = self.cipher.datagram.encrypt(data)
         return data
-    def start_udp_server(self, loop, args, option):
+    def start_udp_server(self, args):
         class Protocol(asyncio.DatagramProtocol):
             def connection_made(self, transport):
                 self.transport = transport
             def datagram_received(self, data, addr):
-                asyncio.ensure_future(datagram_handler(self.transport, data, addr, **vars(args), **vars(option)))
-        return loop.create_datagram_endpoint(Protocol, local_addr=(self.host_name, self.port))
+                asyncio.ensure_future(datagram_handler(self.transport, data, addr, **vars(self), **args))
+        return asyncio.get_event_loop().create_datagram_endpoint(Protocol, local_addr=(self.host_name, self.port))
     async def open_connection(self, host, port, local_addr, lbind):
         if self.reuse:
             if self.streams is None or self.streams.done() and not self.handler:
@@ -305,12 +305,12 @@ class ProxyURI(object):
                 await self.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=self.auth, host_name=whost, port=wport, writer_cipher_r=writer_cipher_r, myhost=self.host_name, sock=writer_remote.get_extra_info('socket'))
             return await self.relay.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port, handler)
         return reader_remote, writer_remote
-    def start_server(self, args, option):
-        handler = functools.partial(reuse_stream_handler if self.reuse else stream_handler, **vars(args), **vars(option))
+    def start_server(self, args):
+        handler = functools.partial(reuse_stream_handler if self.reuse else stream_handler, **vars(self), **args)
         if self.unix:
             return asyncio.start_unix_server(handler, path=self.bind, ssl=self.sslserver)
         else:
-            return asyncio.start_server(handler, host=self.host_name, port=self.port, ssl=self.sslserver, reuse_port=args.ruport)
+            return asyncio.start_server(handler, host=self.host_name, port=self.port, ssl=self.sslserver, reuse_port=args.get('ruport'))
     async def tcp_connect(self, host, port, local_addr=None, lbind=None):
         reader, writer = await self.open_connection(host, port, local_addr, lbind)
         try:
@@ -431,8 +431,8 @@ def main():
     parser.add_argument('--pac', help='http PAC path')
     parser.add_argument('--get', dest='gets', default=[], action='append', help='http custom {path,file}')
     parser.add_argument('--sys', action='store_true', help='change system proxy setting (mac, windows)')
+    parser.add_argument('--reuse', dest='ruport', action='store_true', help='set SO_REUSEPORT (Linux only)')
     parser.add_argument('--test', help='test this url for all remote proxies and exit')
-    parser.add_argument('--reuse', help='set SO_REUSEPORT (Linux only)', dest='ruport', action='store_true')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
     if args.test:
@@ -469,14 +469,14 @@ def main():
     for option in args.listen:
         print('Serving on', option.bind, 'by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
         try:
-            server = loop.run_until_complete(option.start_server(args, option))
+            server = loop.run_until_complete(option.start_server(vars(args)))
             servers.append(server)
         except Exception as ex:
             print('Start server failed.\n\t==>', ex)
     for option in args.ulisten:
         print('Serving on UDP', option.bind, 'by', ",".join(i.name for i in option.protos), f'({option.cipher.name})' if option.cipher else '')
         try:
-            server, protocal = loop.run_until_complete(option.start_udp_server(loop, args, option))
+            server, protocol = loop.run_until_complete(option.start_udp_server(vars(args)))
             servers.append(server)
         except Exception as ex:
             print('Start server failed.\n\t==>', ex)

@@ -80,7 +80,7 @@ Features
 - System proxy auto-setting support.
 - UDP proxy client/server support.
 - Schedule (load balance) among remote servers.
-- Client UDP/TCP API support.
+- Client/Server API support.
 
 .. _One-Time-Auth: https://shadowsocks.org/en/spec/one-time-auth.html
 
@@ -386,6 +386,34 @@ Client API
         print(answer.result())
 
     asyncio.run(test_udp('ss://chacha20:password@remote_host:remote_port'))
+
+Server API
+----------
+
+- Server API example:
+
+  .. code:: rst
+
+    import asyncio
+    import pproxy
+
+    server = pproxy.Server('ss://0.0.0.0:1234')
+    remote = pproxy.Connection('ss://1.2.3.4:5678')
+    args = dict( rserver = [remote],
+                 verbose = print )
+
+    loop = asyncio.get_event_loop()
+    handler = loop.run_until_complete(server.start_server(args))
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        print('exit!')
+
+    handler.close()
+    loop.run_until_complete(handler.wait_closed())
+    loop.run_until_complete(loop.shutdown_asyncgens())
+    loop.close()
+
 
 Examples
 --------

@@ -1,3 +1,6 @@
-from .server import ProxyURI
+from . import server
 
-Connection = ProxyURI.compile_relay
+Connection = server.ProxyURI.compile_relay
+DIRECT = server.ProxyURI.DIRECT
+Server = server.ProxyURI.compile
+Rule = server.pattern_compile
