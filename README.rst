@@ -37,7 +37,7 @@ Apply OS system-wide proxy: (MacOS, Windows)
 .. code:: rst
 
   $ pproxy -r ss://chacha20:abc@server_ip:8080 --sys -vv
-  Serving on :8080 by http,socks4,socks5 
+  Serving on :8080 by http,socks4,socks5
   System proxy setting -> socks5 localhost:8080
   socks5 ::1:57345 -> ss server_ip:8080 -> slack.com:443
   socks5 ::1:57345 -> ss server_ip:8080 -> www.google.com:443
@@ -47,10 +47,10 @@ Apply CLI proxy: (MacOS, Linux)
 
 .. code:: rst
 
-  $ export http_proxy=http://localhost:8080 
-  $ export https_proxy=http://localhost:8080 
+  $ export http_proxy=http://localhost:8080
+  $ export https_proxy=http://localhost:8080
 
-Run With Docker 
+Run With Docker
 ---------------
 
 `pproxy` Docker container comes with C optimizations pre-installed.
@@ -91,8 +91,9 @@ Protocols
 | Name              | TCP server | TCP client | UDP server | UDP client | scheme       |
 +===================+============+============+============+============+==============+
 | http (connect)    | ✔          | ✔          |            |            | http://      |
-+-------------------+------------+------------+------------+------------+--------------+
-| http (get,post)   | ✔          | ✖          |            |            | http://      |
++-------------------+            +------------+------------+------------+--------------+
+| http              |            | ✔          |            |            | httponly://  |
+| (get,post,etc)    |            |            |            |            | (as client)  |
 +-------------------+------------+------------+------------+------------+--------------+
 | https             | ✔          | ✔          |            |            | http+ssl://  |
 +-------------------+------------+------------+------------+------------+--------------+
@@ -174,10 +175,10 @@ Usage
   usage: pproxy [-h] [-l LISTEN] [-r RSERVER] [-ul ULISTEN] [-ur URSERVER]
                 [-b BLOCK] [-a ALIVED] [-v] [--ssl SSLFILE] [--pac PAC]
                 [--get GETS] [--sys] [--test TESTURL] [--version]
-  
+
   Proxy server that can tunnel among remote servers by regex rules. Supported
   protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect,pf,tunnel
-  
+
   optional arguments:
     -h, --help        show this help message and exit
     -l LISTEN         tcp server uri (default: http+socks4+socks5://:8080/)
@@ -194,7 +195,7 @@ Usage
     --sys             change system proxy setting (mac, windows)
     --test TEST       test this url for all remote proxies and exit
     --version         show program's version number and exit
-  
+
   Online help: <https://github.com/qwj/python-proxy>
 
 URI Syntax
@@ -254,7 +255,7 @@ URI Syntax
     | rc4             | 16         | 0         | 0 (lowest)  |
     +-----------------+------------+-----------+-------------+
     | rc4-md5         | 16         | 16        | 0.5         |
-    +-----------------+------------+-----------+-------------+ 
+    +-----------------+------------+-----------+-------------+
     | chacha20        | 32         | 8         | 5 (highest) |
     +-----------------+------------+-----------+-------------+
     | chacha20-ietf   | 32         | 12        | 5           |

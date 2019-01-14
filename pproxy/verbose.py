@@ -26,10 +26,10 @@ def all_stat(stats):
     print('='*70)
 
 async def realtime_stat(stats):
-    history = [(stats[:4], time.time())]
+    history = [(stats[:4], time.perf_counter())]
     while True:
         await asyncio.sleep(1)
-        history.append((stats[:4], time.time()))
+        history.append((stats[:4], time.perf_counter()))
         i0, t0, i1, t1 = history[0][0], history[0][1], history[-1][0], history[-1][1]
         stat = [b2s((i1[i]-i0[i])/(t1-t0))+'/s' for i in range(4)] + stats[4:]
         sys.stdout.write('DIRECT: {5} ({1},{3})   PROXY: {4} ({0},{2})\x1b[0K\r'.format(*stat))

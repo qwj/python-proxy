@@ -287,6 +287,28 @@ class HTTP(BaseProtocol):
             stat_conn(-1)
             writer.close()
 
+class HTTPOnly(HTTP):
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
+        buffer = bytearray()
+        header = None
+        def write(data, o=writer_remote.write):
+            nonlocal header
+            if not data: return
+            if header:
+                return o(data)
+            buffer.extend(data)
+            pos = buffer.find(10)
+            if pos != -1 or len(buffer) > 4096:
+                header = HTTP_LINE.match(buffer[:pos].decode().rstrip())
+                if not header:
+                    writer_remote.close()
+                    raise Exception('Unknown HTTP header for protocol HTTPOnly')
+                method, path, ver = header.groups()
+                data = f'{method} http://{host_name}{":"+str(port) if port!=80 else ""}{path} {ver}'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n' + buffer[pos+1:]
+                print(data)
+                return o(data)
+        writer_remote.write = write
+
 class Transparent(BaseProtocol):
     def correct_header(self, header, auth, sock, **kw):
         remote = self.query_remote(sock)
@@ -537,7 +559,7 @@ def udp_parse(protos, data, **kw):
             return (proto,) + ret
     raise Exception(f'Unsupported protocol {data[:10]}')
 
-MAPPINGS = dict(direct=Direct, http=HTTP, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, pack=Pack, ws=WS, ssl='', secure='')
+MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, pack=Pack, ws=WS, ssl='', secure='')
 
 def get_protos(rawprotos):
     protos = []
