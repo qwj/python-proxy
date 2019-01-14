@@ -209,33 +209,37 @@ URI Syntax
 
   - Currently supported scheme: http, socks, ss, ssl, secure. You can use + to link multiple protocols together.
 
-    +--------+-----------------------------+
-    | http   | http protocol               |
-    +--------+-----------------------------+
-    | socks4 | socks4 protocol             |
-    +--------+-----------------------------+
-    | socks5 | socks5 protocol             |
-    +--------+-----------------------------+
-    | ss     | shadowsocks protocol        |
-    +--------+-----------------------------+
-    | ssr    | shadowsocksr (SSR) protocol |
-    +--------+-----------------------------+
-    | redir  | redirect (iptables nat)     |
-    +--------+-----------------------------+
-    | pf     | pfctl (macos pf nat)        |
-    +--------+-----------------------------+
-    | ssl    | unsecured ssl/tls (no cert) |
-    +--------+-----------------------------+
-    | secure | secured ssl/tls (cert)      |
-    +--------+-----------------------------+
-    | tunnel | raw connection              |
-    +--------+-----------------------------+
-    | ws     | websocket connection        |
-    +--------+-----------------------------+
-    | echo   | echo-back service           |
-    +--------+-----------------------------+
-    | direct | direct connection           |
-    +--------+-----------------------------+
+    +----------+-----------------------------+
+    | http     | http protocol (CONNECT)     |
+    +----------+-----------------------------+
+    | httponly | http protocol (GET/POST)    |
+    +----------+-----------------------------+
+    | socks4   | socks4 protocol             |
+    +----------+-----------------------------+
+    | socks5   | socks5 protocol             |
+    +----------+-----------------------------+
+    | ss       | shadowsocks protocol        |
+    +----------+-----------------------------+
+    | ssr      | shadowsocksr (SSR) protocol |
+    +----------+-----------------------------+
+    | redir    | redirect (iptables nat)     |
+    +----------+-----------------------------+
+    | pf       | pfctl (macos pf nat)        |
+    +----------+-----------------------------+
+    | ssl      | unsecured ssl/tls (no cert) |
+    +----------+-----------------------------+
+    | secure   | secured ssl/tls (cert)      |
+    +----------+-----------------------------+
+    | tunnel   | raw connection              |
+    +----------+-----------------------------+
+    | ws       | websocket connection        |
+    +----------+-----------------------------+
+    | echo     | echo-back service           |
+    +----------+-----------------------------+
+    | direct   | direct connection           |
+    +----------+-----------------------------+
+
+  - "http://" accepts GET/POST/CONNECT as server, sends CONNECT as client. "httponly://" sends "GET/POST" as client, works only on http traffic.
 
   - Valid schemes: http://, http+socks4+socks5://, http+ssl://, ss+secure://, http+socks5+ss://
 
