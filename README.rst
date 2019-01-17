@@ -60,27 +60,22 @@ Run With Docker
 Features
 --------
 
-- Single-thread asynchronous IO with high availability and scalability.
-- Lightweight (~500 lines) and powerful by leveraging python builtin *asyncio* library.
-- No additional library is required. All codes are in pure Python.
-- Auto-detect incoming traffic.
-- Tunnel by remote proxy servers.
-- Tunnel and relay with several layers.
-- Unix domain socket.
-- Basic authentication for all protocols.
-- Regex pattern file to route/block by hostname.
+- Lightweight single-thread asynchronous IO.
+- Pure python, no additional library required.
+- Proxy client/server for TCP/UDP.
+- Schedule (load balance) among remote servers.
+- Incoming traffic auto-detect.
+- Tunnel/relay/backward-relay support.
+- Unix domain socket support.
+- User/password authentication support.
+- Filter/block hostname by regex patterns.
 - SSL/TLS client/server support.
-- Built-in encryption ciphers. (chacha20, aes-256-cfb, etc)
-- Shadowsocks OTA (One-Time-Auth_).
-- SSR plugins. (http_simple, verify_simple, tls1.2_ticket_auth, etc)
+- Shadowsocks OTA (One-Time-Auth_), SSR plugins.
 - Statistics by bandwidth and traffic.
 - PAC support for javascript configuration.
-- Iptables NAT redirect packet tunnel.
-- PyPy3 support with JIT speedup.
+- Iptables/Pf NAT redirect packet tunnel.
 - System proxy auto-setting support.
-- UDP proxy client/server support.
-- Schedule (load balance) among remote servers.
-- Client/Server API support.
+- Client/Server API provided.
 
 .. _One-Time-Auth: https://shadowsocks.org/en/spec/one-time-auth.html
 
@@ -624,4 +619,22 @@ Examples
   Then port :1234 on local machine is connected to the /tmp/myproxy on remote machine by WebSocket tunnel. You can specify any proxy protocol details on /tmp/myproxy.
 
   It is a good practice to use some CDN in the middle of local/remote machines. CDN with WebSocket support can hide remote machine's real IP from public.
+
+- Backward proxy
+
+  Sometimes, the proxy server hides behind an NAT router and doesn't have a public ip. the client side has a public ip "client_ip". Backward proxy feature enables the server to connect backward to client and wait for proxy requests.
+
+  Run **pproxy** client as follows:
+
+  .. code:: rst
+
+    $ pproxy -l http://:8080 -r http+in://:8081 -v
+
+  Run **pproxy** server as follows:
+
+  .. code:: rst
+
+    $ pproxy -l http+in://client_ip:8081
+
+  Server connects to client_ip:8081 and waits for client proxy requests. The protocol http specified is just an example. It can be any protocol and cipher **pproxy** supports. The scheme **in** should exist in URI to inform **pproxy** that it is a backward proxy.
 

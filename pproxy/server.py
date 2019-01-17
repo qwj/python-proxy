@@ -185,18 +185,12 @@ async def check_server_alive(interval, rserver, verbose):
             except Exception:
                 pass
 
-def pattern_compile(filename):
-    with open(filename) as f:
-        return re.compile('(:?'+''.join('|'.join(i.strip() for i in f if i.strip() and not i.startswith('#')))+')$').match
-
-class Backward(object):
-    MAX_CONN = 1
+class BackwardConnection(object):
     def __init__(self, uri):
         self.uri = uri
         self.closed = False
         self.conn = asyncio.Queue()
         self.open_connection = self.conn.get
-        self.writer = None
     def close(self):
         self.closed = True
         try:
@@ -204,11 +198,9 @@ class Backward(object):
         except Exception:
             pass
     async def start_server(self, handler):
-        self.handler = handler
-        for _ in range(self.MAX_CONN):
-            asyncio.ensure_future(self.server_run())
+        asyncio.ensure_future(self.server_run(handler))
         return self
-    async def server_run(self):
+    async def server_run(self, handler):
         errwait = 0
         while not self.closed:
             if self.uri.unix:
@@ -221,15 +213,19 @@ class Backward(object):
                 data = await reader.read_()
                 if data:
                     reader._buffer[0:0] = data
-                    asyncio.ensure_future(self.handler(reader, writer))
+                    asyncio.ensure_future(handler(reader, writer))
                 errwait = 0
             except Exception as ex:
+                try:
+                    writer.close()
+                except Exception:
+                    pass
                 if not self.closed:
                     await asyncio.sleep(errwait)
                     errwait = errwait*1.3 + 0.1
     def client_run(self):
         async def handler(reader, writer):
-            while self.conn.qsize() >= self.MAX_CONN:
+            while not self.conn.empty():
                 r, w = await self.conn.get()
                 try: w.close()
                 except Exception: pass
@@ -247,7 +243,7 @@ class ProxyURI(object):
         self.handler = None
         self.streams = None
         if self.backward:
-            self.backward = Backward(self)
+            self.backward = BackwardConnection(self)
     def logtext(self, host, port):
         if self.direct:
             return f' -> {host}:{port}'
@@ -381,6 +377,10 @@ class ProxyURI(object):
         data = self.prepare_udp_connection(host, port, data)
         await self.open_udp_connection(host, port, data, local_addr, answer_cb)
     @classmethod
+    def compile_rule(cls, filename):
+        with open(filename) as f:
+            return re.compile('(:?'+''.join('|'.join(i.strip() for i in f if i.strip() and not i.startswith('#')))+')$').match
+    @classmethod
     def compile_relay(cls, uri):
         tail = cls.DIRECT
         for urip in reversed(uri.split('__')):
@@ -430,7 +430,7 @@ class ProxyURI(object):
                     if err_str:
                         raise argparse.ArgumentTypeError(err_str)
                     cipher.plugins.append(plugin)
-        match = pattern_compile(url.query) if url.query else None
+        match = cls.compile_rule(url.query) if url.query else None
         if loc:
             host_name, _, port = loc.partition(':')
             port = int(port) if port else 8080
@@ -479,7 +479,7 @@ def main():
     parser.add_argument('-r', dest='rserver', default=[], action='append', type=ProxyURI.compile_relay, help='tcp remote server uri (default: direct)')
     parser.add_argument('-ul', dest='ulisten', default=[], action='append', type=ProxyURI.compile, help='udp server setting uri (default: none)')
     parser.add_argument('-ur', dest='urserver', default=[], action='append', type=ProxyURI.compile_relay, help='udp remote server uri (default: direct)')
-    parser.add_argument('-b', dest='block', type=pattern_compile, help='block regex rules')
+    parser.add_argument('-b', dest='block', type=ProxyURI.compile_rule, help='block regex rules')
     parser.add_argument('-a', dest='alived', default=0, type=int, help='interval to check remote alive (default: no check)')
     parser.add_argument('-s', dest='salgorithm', default='fa', choices=('fa', 'rr', 'rc', 'lc'), help='scheduling algorithm (default: first_available)')
     parser.add_argument('-v', dest='v', action='count', help='print verbose output')
