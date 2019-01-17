@@ -560,6 +560,7 @@ def udp_parse(protos, data, **kw):
     raise Exception(f'Unsupported protocol {data[:10]}')
 
 MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, pack=Pack, ws=WS, ssl='', secure='')
+MAPPINGS['in'] = ''
 
 def get_protos(rawprotos):
     protos = []

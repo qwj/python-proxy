@@ -189,6 +189,56 @@ def pattern_compile(filename):
     with open(filename) as f:
         return re.compile('(:?'+''.join('|'.join(i.strip() for i in f if i.strip() and not i.startswith('#')))+')$').match
 
+class Backward(object):
+    MAX_CONN = 1
+    def __init__(self, uri):
+        self.uri = uri
+        self.closed = False
+        self.conn = asyncio.Queue()
+        self.open_connection = self.conn.get
+        self.writer = None
+    def close(self):
+        self.closed = True
+        try:
+            self.writer.close()
+        except Exception:
+            pass
+    async def start_server(self, handler):
+        self.handler = handler
+        for _ in range(self.MAX_CONN):
+            asyncio.ensure_future(self.server_run())
+        return self
+    async def server_run(self):
+        errwait = 0
+        while not self.closed:
+            if self.uri.unix:
+                wait = asyncio.open_unix_connection(path=self.uri.bind, ssl=self.uri.sslclient, server_hostname='' if self.uri.sslclient else None)
+            else:
+                wait = asyncio.open_connection(host=self.uri.host_name, port=self.uri.port, ssl=self.uri.sslclient, local_addr=(self.uri.lbind, 0) if self.uri.lbind else None)
+            try:
+                reader, writer = await asyncio.wait_for(wait, timeout=SOCKET_TIMEOUT)
+                self.writer = writer
+                data = await reader.read_()
+                if data:
+                    reader._buffer[0:0] = data
+                    asyncio.ensure_future(self.handler(reader, writer))
+                errwait = 0
+            except Exception as ex:
+                if not self.closed:
+                    await asyncio.sleep(errwait)
+                    errwait = errwait*1.3 + 0.1
+    def client_run(self):
+        async def handler(reader, writer):
+            while self.conn.qsize() >= self.MAX_CONN:
+                r, w = await self.conn.get()
+                try: w.close()
+                except Exception: pass
+            await self.conn.put((reader, writer))
+        if self.uri.unix:
+            return asyncio.start_unix_server(handler, path=self.uri.bind, ssl=self.uri.sslserver)
+        else:
+            return asyncio.start_server(handler, host=self.uri.host_name, port=self.uri.port, ssl=self.uri.sslserver)
+
 class ProxyURI(object):
     def __init__(self, **kw):
         self.__dict__.update(kw)
@@ -196,6 +246,8 @@ class ProxyURI(object):
         self.udpmap = {}
         self.handler = None
         self.streams = None
+        if self.backward:
+            self.backward = Backward(self)
     def logtext(self, host, port):
         if self.direct:
             return f' -> {host}:{port}'
@@ -274,6 +326,8 @@ class ProxyURI(object):
                     raise Exception('Unknown tunnel endpoint')
                 local_addr = local_addr if lbind == 'in' else (lbind, 0) if lbind else None
                 wait = asyncio.open_connection(host=host, port=port, local_addr=local_addr)
+            elif self.backward:
+                wait = self.backward.open_connection()
             elif self.unix:
                 wait = asyncio.open_unix_connection(path=self.bind, ssl=self.sslclient, server_hostname='' if self.sslclient else None)
             else:
@@ -307,7 +361,9 @@ class ProxyURI(object):
         return reader_remote, writer_remote
     def start_server(self, args):
         handler = functools.partial(reuse_stream_handler if self.reuse else stream_handler, **vars(self), **args)
-        if self.unix:
+        if self.backward:
+            return self.backward.start_server(handler)
+        elif self.unix:
             return asyncio.start_unix_server(handler, path=self.bind, ssl=self.sslserver)
         else:
             return asyncio.start_server(handler, host=self.host_name, port=self.port, ssl=self.sslserver, reuse_port=args.get('ruport'))
@@ -384,8 +440,8 @@ class ProxyURI(object):
                         match=match, bind=loc or urlpath, host_name=host_name, port=port, \
                         unix=not loc, lbind=lbind, sslclient=sslclient, sslserver=sslserver, \
                         alive=True, direct='direct' in protonames, tunnel='tunnel' in protonames, \
-                        reuse='pack' in protonames or relay and relay.reuse, relay=relay)
-ProxyURI.DIRECT = ProxyURI(direct=True, tunnel=False, reuse=False, relay=None, alive=True, match=None, cipher=None)
+                        reuse='pack' in protonames or relay and relay.reuse, backward='in' in rawprotos, relay=relay)
+ProxyURI.DIRECT = ProxyURI(direct=True, tunnel=False, reuse=False, relay=None, alive=True, match=None, cipher=None, backward=None)
 
 async def test_url(url, rserver):
     url = urllib.parse.urlparse(url)
@@ -480,6 +536,14 @@ def main():
             servers.append(server)
         except Exception as ex:
             print('Start server failed.\n\t==>', ex)
+    for option in args.rserver:
+        if option.backward:
+            print('Serving on', option.bind, 'backward by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
+            try:
+                server = loop.run_until_complete(option.backward.client_run())
+                servers.append(server)
+            except Exception as ex:
+                print('Start server failed.\n\t==>', ex)
     if servers:
         if args.sys:
             from . import sysproxy
