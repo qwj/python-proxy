@@ -622,7 +622,7 @@ Examples
 
 - Backward proxy
 
-  Sometimes, the proxy server hides behind an NAT router and doesn't have a public ip. the client side has a public ip "client_ip". Backward proxy feature enables the server to connect backward to client and wait for proxy requests.
+  Sometimes, the proxy server hides behind an NAT router and doesn't have a public ip. The client side has a public ip "client_ip". Backward proxy feature enables the server to connect backward to client and wait for proxy requests.
 
   Run **pproxy** client as follows:
 
