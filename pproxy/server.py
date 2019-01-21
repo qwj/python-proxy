@@ -303,10 +303,10 @@ class ProxyURI(object):
         return data
     def start_udp_server(self, args):
         class Protocol(asyncio.DatagramProtocol):
-            def connection_made(self, transport):
-                self.transport = transport
-            def datagram_received(self, data, addr):
-                asyncio.ensure_future(datagram_handler(self.transport, data, addr, **vars(self), **args))
+            def connection_made(prot, transport):
+                prot.transport = transport
+            def datagram_received(prot, data, addr):
+                asyncio.ensure_future(datagram_handler(prot.transport, data, addr, **vars(self), **args))
         return asyncio.get_event_loop().create_datagram_endpoint(Protocol, local_addr=(self.host_name, self.port))
     async def open_connection(self, host, port, local_addr, lbind):
         if self.reuse:
