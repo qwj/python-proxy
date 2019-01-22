@@ -11,13 +11,13 @@ asyncio.StreamReader.read_ = lambda self: self.read(PACKET_SIZE)
 asyncio.StreamReader.read_n = lambda self, n: asyncio.wait_for(self.readexactly(n), timeout=SOCKET_TIMEOUT)
 asyncio.StreamReader.read_until = lambda self, s: asyncio.wait_for(self.readuntil(s), timeout=SOCKET_TIMEOUT)
 
-AUTH_TIME = 86400 * 30
 class AuthTable(object):
     _auth = {}
-    def __init__(self, remote_ip):
+    def __init__(self, remote_ip, authtime):
         self.remote_ip = remote_ip
+        self.authtime = authtime
     def authed(self):
-        return time.time() - self._auth.get(self.remote_ip, 0) <= AUTH_TIME
+        return time.time() - self._auth.get(self.remote_ip, 0) <= self.authtime
     def set_authed(self):
         self._auth[self.remote_ip] = time.time()
 
@@ -51,7 +51,7 @@ def schedule(rserver, salgorithm, host_name):
     else:
         raise Exception('Unknown scheduling algorithm') #Unreachable
 
-async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, block=None, salgorithm='fa', verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
+async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, authtime=86400*30, block=None, salgorithm='fa', verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
     try:
         if unix:
             remote_ip, server_ip, remote_text = 'local', None, 'unix_local'
@@ -61,7 +61,7 @@ async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, b
             remote_text = f'{remote_ip}:{remote_port}'
         local_addr = None if server_ip in ('127.0.0.1', '::1', None) else (server_ip, 0)
         reader_cipher, _ = await prepare_ciphers(cipher, reader, writer, server_side=False)
-        lproto, host_name, port, initbuf = await proto.parse(protos, reader=reader, writer=writer, authtable=AuthTable(remote_ip), reader_cipher=reader_cipher, sock=writer.get_extra_info('socket'), **kwargs)
+        lproto, host_name, port, initbuf = await proto.parse(protos, reader=reader, writer=writer, authtable=AuthTable(remote_ip, authtime), reader_cipher=reader_cipher, sock=writer.get_extra_info('socket'), **kwargs)
         if host_name == 'echo':
             asyncio.ensure_future(lproto.channel(reader, writer, DUMMY, DUMMY))
         elif host_name == 'empty':
@@ -486,6 +486,7 @@ def main():
     parser.add_argument('--ssl', dest='sslfile', help='certfile[,keyfile] if server listen in ssl mode')
     parser.add_argument('--pac', help='http PAC path')
     parser.add_argument('--get', dest='gets', default=[], action='append', help='http custom {path,file}')
+    parser.add_argument('--auth', dest='authtime', type=int, default=86400*30, help='re-auth time interval for same ip (default: 86400*30)')
     parser.add_argument('--sys', action='store_true', help='change system proxy setting (mac, windows)')
     parser.add_argument('--reuse', dest='ruport', action='store_true', help='set SO_REUSEPORT (Linux only)')
     parser.add_argument('--test', help='test this url for all remote proxies and exit')

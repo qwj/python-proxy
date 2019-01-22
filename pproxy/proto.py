@@ -171,7 +171,7 @@ class Socks4(BaseProtocol):
         userid = (await reader.read_until(b'\x00'))[:-1]
         if auth:
             if auth != userid and not authtable.authed():
-                raise Exception('Unauthorized SOCKS')
+                raise Exception(f'Unauthorized SOCKS {auth}')
             authtable.set_authed()
         writer.write(b'\x00\x5a' + port.to_bytes(2, 'big') + ip)
         return socket.inet_ntoa(ip), port, b''
@@ -192,7 +192,7 @@ class Socks5(BaseProtocol):
             u = await reader.read_n((await reader.read_n(1))[0])
             p = await reader.read_n((await reader.read_n(1))[0])
             if u+b':'+p != auth:
-                raise Exception('Unauthorized SOCKS')
+                raise Exception(f'Unauthorized SOCKS {u}:{p}')
             writer.write(b'\x01\x00')
         else:
             writer.write(b'\x05\x00')
