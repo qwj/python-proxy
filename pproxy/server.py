@@ -321,14 +321,16 @@ class ProxyURI(object):
                 if host == 'tunnel':
                     raise Exception('Unknown tunnel endpoint')
                 local_addr = local_addr if lbind == 'in' else (lbind, 0) if lbind else None
-                wait = asyncio.open_connection(host=host, port=port, local_addr=local_addr)
+                family = 0 if local_addr is None else 30 if ':' in local_addr[0] else 2
+                wait = asyncio.open_connection(host=host, port=port, local_addr=local_addr, family=family)
             elif self.backward:
                 wait = self.backward.open_connection()
             elif self.unix:
                 wait = asyncio.open_unix_connection(path=self.bind, ssl=self.sslclient, server_hostname='' if self.sslclient else None)
             else:
                 local_addr = local_addr if self.lbind == 'in' else (self.lbind, 0) if self.lbind else None
-                wait = asyncio.open_connection(host=self.host_name, port=self.port, ssl=self.sslclient, local_addr=local_addr)
+                family = 0 if local_addr is None else 30 if ':' in local_addr[0] else 2
+                wait = asyncio.open_connection(host=self.host_name, port=self.port, ssl=self.sslclient, local_addr=local_addr, family=family)
             reader, writer = await asyncio.wait_for(wait, timeout=SOCKET_TIMEOUT)
         except Exception as ex:
             if self.reuse:
