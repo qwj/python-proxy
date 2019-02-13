@@ -53,9 +53,15 @@ Apply CLI proxy: (MacOS, Linux)
 Run With Docker
 ---------------
 
-`pproxy` Docker container comes with C optimizations pre-installed.
+`pproxy` Docker container has both python3 (with Cryptodome for performance optimizations) and `pypy` versions available.
 
-```docker run -it -p 8080:8080 mosajjal/pproxy pproxy -l http://:8080 -vv```
+Python3:
+
+``docker run -it -p 8080:8080 mosajjal/pproxy:latest -l http://:8080 -vv``
+
+Pypy3:
+
+``docker run -it -p 8080:8080 mosajjal/pproxy:latest-pypy -l http://:8080 -vv``
 
 Features
 --------
