@@ -305,7 +305,6 @@ class HTTPOnly(HTTP):
                     raise Exception('Unknown HTTP header for protocol HTTPOnly')
                 method, path, ver = header.groups()
                 data = f'{method} http://{host_name}{":"+str(port) if port!=80 else ""}{path} {ver}'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n' + buffer[pos+1:]
-                print(data)
                 return o(data)
         writer_remote.write = write
 
