@@ -39,6 +39,9 @@ setup(
         'accelerated': [
             'pycryptodome >= 3.7.2',
         ],
+        'sshtunnel': [
+            'asyncssh >= 1.16.0',
+        ],
     },
     install_requires    = [],
     entry_points        = {
