@@ -649,6 +649,6 @@ Examples
 Projects
 --------
 
-+ `shadowproxy <https://github.com/guyingbo/shadowproxy>`_ An awesome proxy implementation by guyingbo
-+ `python-esp <https://github.com/qwj/python-esp>`_ Pure python VPN (IPSec,IKE,IKEv2,L2TP)
++ `python-esp <https://github.com/qwj/python-esp>`_ - Pure python VPN (IPSec,IKE,IKEv2,L2TP)
++ `shadowproxy <https://github.com/guyingbo/shadowproxy>`_ - Another awesome proxy implementation by guyingbo
 
