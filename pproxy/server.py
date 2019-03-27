@@ -310,7 +310,7 @@ class ProxyURI(object):
         return asyncio.get_event_loop().create_datagram_endpoint(Protocol, local_addr=(self.host_name, self.port))
     async def open_connection(self, host, port, local_addr, lbind):
         if self.reuse or self.ssh:
-            if self.streams is None or self.streams.done() and not self.handler:
+            if self.streams is None or self.streams.done() and (self.reuse and not self.handler):
                 self.streams = asyncio.get_event_loop().create_future()
             else:
                 if not self.streams.done():
