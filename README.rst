@@ -1,7 +1,7 @@
 python-proxy
 ============
 
-|made-with-python| |PyPI-version| |Hit-Count|
+|made-with-python| |PyPI-version| |Hit-Count| |Downloads|
 
 .. |made-with-python| image:: https://img.shields.io/badge/Made%20with-Python-1f425f.svg
    :target: https://www.python.org/
@@ -9,6 +9,8 @@ python-proxy
    :target: https://pypi.python.org/pypi/pproxy/
 .. |Hit-Count| image:: http://hits.dwyl.io/qwj/python-proxy.svg
    :target: https://pypi.python.org/pypi/pproxy/
+.. |Downloads| image:: https://pepy.tech/badge/pproxy
+   :target: https://pepy.tech/project/pproxy
 
 HTTP/Socks4/Socks5/Shadowsocks/ShadowsocksR/Redirect/Pf TCP/UDP asynchronous tunnel proxy implemented in Python3 asyncio.
 
@@ -643,4 +645,10 @@ Examples
     $ pproxy -l http+in://client_ip:8081
 
   Server connects to client_ip:8081 and waits for client proxy requests. The protocol http specified is just an example. It can be any protocol and cipher **pproxy** supports. The scheme **in** should exist in URI to inform **pproxy** that it is a backward proxy.
+
+Projects
+--------
+
++ `https://github.com/guyingbo/shadowproxy`_ Shadowproxy by guyingbo
++ `https://github.com/qwj/python-esp`_ Pure python VPN (IPSec,IKE,IKEv2,L2TP) implementation
 
