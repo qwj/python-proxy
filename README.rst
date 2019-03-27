@@ -12,7 +12,7 @@ python-proxy
 .. |Downloads| image:: https://pepy.tech/badge/pproxy
    :target: https://pepy.tech/project/pproxy
 
-HTTP/Socks4/Socks5/Shadowsocks/ShadowsocksR/Redirect/Pf TCP/UDP asynchronous tunnel proxy implemented in Python3 asyncio.
+HTTP/Socks4/Socks5/Shadowsocks/ShadowsocksR/SSH/Redirect/Pf TCP/UDP asynchronous tunnel proxy implemented in Python3 asyncio.
 
 QuickStart
 ----------
@@ -112,6 +112,8 @@ Protocols
 +-------------------+------------+------------+------------+------------+--------------+
 | shadowsocksR      | ✔          | ✔          |            |            | ssr://       |
 +-------------------+------------+------------+------------+------------+--------------+
+| ssh tunnel        |            | ✔          |            |            | ssh://       |
++-------------------+------------+------------+------------+------------+--------------+
 | iptables nat      | ✔          |            |            |            | redir://     |
 +-------------------+------------+------------+------------+------------+--------------+
 | pfctl nat (macos) | ✔          |            |            |            | pf://        |
@@ -149,6 +151,8 @@ Requirement
 
 pycryptodome_ is an optional library to enable faster (C version) cipher. **pproxy** has many built-in pure python ciphers. They are lightweight and stable, but slower than C ciphers. After speedup with PyPy_, pure python ciphers can get similar performance as C version. If the performance is important and don't have PyPy_, install pycryptodome_ instead.
 
+asyncssh_ is an optional library to enable ssh tunnel client support.
+
 These are some performance benchmarks between Python and C ciphers (dataset: 8M):
 
 +---------------------+----------------+
@@ -167,6 +171,7 @@ PyPy3 Quickstart:
   $ pypy3 -m pip install asyncio pproxy
 
 .. _pycryptodome: https://pycryptodome.readthedocs.io/en/latest/src/introduction.html
+.. _asyncssh: https://asyncssh.readthedocs.io/en/latest/
 .. _PyPy: http://pypy.org
 
 Usage
@@ -224,6 +229,8 @@ URI Syntax
     | ss       | shadowsocks protocol        |
     +----------+-----------------------------+
     | ssr      | shadowsocksr (SSR) protocol |
+    +----------+-----------------------------+
+    | ssh      | ssh client tunnel           |
     +----------+-----------------------------+
     | redir    | redirect (iptables nat)     |
     +----------+-----------------------------+
@@ -644,7 +651,24 @@ Examples
 
     $ pproxy -l http+in://client_ip:8081
 
-  Server connects to client_ip:8081 and waits for client proxy requests. The protocol http specified is just an example. It can be any protocol and cipher **pproxy** supports. The scheme **in** should exist in URI to inform **pproxy** that it is a backward proxy.
+  Server connects to client_ip:8081 and waits for client proxy requests. The protocol http specified is just an example. It can be any protocol and cipher **pproxy** supports. The scheme "**in**" should exist in URI to inform **pproxy** that it is a backward proxy.
+
+- SSH client tunnel
+
+  SSH client tunnel support is enabled by installing additional library asyncssh_. After "pip3 install asyncssh", you can specify "**ssh**" as scheme to proxy via ssh client tunnel.
+
+  .. code:: rst
+
+    $ pproxy -l http://:8080 -r ssh://remote_server.com/#login:password
+
+  If a client private key is used to authenticate, put double colon "::" between login and private key path.
+
+  .. code:: rst
+
+    $ pproxy -l http://:8080 -r ssh://remote_server.com/#login::private_key_path
+
+  SSH connection known_hosts feature is disabled by default.
+
 
 Projects
 --------

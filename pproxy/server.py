@@ -309,7 +309,7 @@ class ProxyURI(object):
                 asyncio.ensure_future(datagram_handler(prot.transport, data, addr, **vars(self), **args))
         return asyncio.get_event_loop().create_datagram_endpoint(Protocol, local_addr=(self.host_name, self.port))
     async def open_connection(self, host, port, local_addr, lbind):
-        if self.reuse:
+        if self.reuse or self.ssh:
             if self.streams is None or self.streams.done() and not self.handler:
                 self.streams = asyncio.get_event_loop().create_future()
             else:
@@ -323,6 +323,25 @@ class ProxyURI(object):
                 local_addr = local_addr if lbind == 'in' else (lbind, 0) if lbind else None
                 family = 0 if local_addr is None else 30 if ':' in local_addr[0] else 2
                 wait = asyncio.open_connection(host=host, port=port, local_addr=local_addr, family=family)
+            elif self.ssh:
+                try:
+                    import asyncssh
+                    for s in ('read_', 'read_n', 'read_until'):
+                        setattr(asyncssh.SSHReader, s, getattr(asyncio.StreamReader, s))
+                except Exception:
+                    raise Exception('Missing library: "pip3 install asyncssh"')
+                username, password = self.auth.decode().split(':', 1)
+                if password.startswith(':'):
+                    client_keys = [password[1:]]
+                    password = None
+                else:
+                    client_keys = None
+                local_addr = local_addr if self.lbind == 'in' else (self.lbind, 0) if self.lbind else None
+                family = 0 if local_addr is None else 30 if ':' in local_addr[0] else 2
+                conn = await asyncssh.connect(host=self.host_name, port=self.port, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys)
+                if not self.streams.done():
+                    self.streams.set_result((conn, None))
+                return conn, None
             elif self.backward:
                 wait = self.backward.open_connection()
             elif self.unix:
@@ -353,6 +372,8 @@ class ProxyURI(object):
                 if not self.streams.done():
                     self.streams.set_result((reader_remote, writer_remote))
                 reader_remote, writer_remote = handler.connect(whost, wport)
+            elif self.ssh:
+                reader_remote, writer_remote = await reader_remote.open_connection(whost, wport)
             else:
                 await self.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=self.auth, host_name=whost, port=wport, writer_cipher_r=writer_cipher_r, myhost=self.host_name, sock=writer_remote.get_extra_info('socket'))
             return await self.relay.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port, handler)
@@ -435,14 +456,15 @@ class ProxyURI(object):
         match = cls.compile_rule(url.query) if url.query else None
         if loc:
             host_name, _, port = loc.partition(':')
-            port = int(port) if port else 8080
+            port = int(port) if port else (22 if 'ssh' in rawprotos else 8080)
         else:
             host_name = port = None
         return ProxyURI(protos=protos, rproto=protos[0], cipher=cipher, auth=url.fragment.encode(), \
                         match=match, bind=loc or urlpath, host_name=host_name, port=port, \
                         unix=not loc, lbind=lbind, sslclient=sslclient, sslserver=sslserver, \
                         alive=True, direct='direct' in protonames, tunnel='tunnel' in protonames, \
-                        reuse='pack' in protonames or relay and relay.reuse, backward='in' in rawprotos, relay=relay)
+                        reuse='pack' in protonames or relay and relay.reuse, backward='in' in rawprotos, \
+                        ssh='ssh' in rawprotos, relay=relay)
 ProxyURI.DIRECT = ProxyURI(direct=True, tunnel=False, reuse=False, relay=None, alive=True, match=None, cipher=None, backward=None)
 
 async def test_url(url, rserver):

@@ -308,6 +308,10 @@ class HTTPOnly(HTTP):
                 return o(data)
         writer_remote.write = write
 
+class SSH(BaseProtocol):
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
+        pass
+
 class Transparent(BaseProtocol):
     def correct_header(self, header, auth, sock, **kw):
         remote = self.query_remote(sock)
@@ -558,7 +562,7 @@ def udp_parse(protos, data, **kw):
             return (proto,) + ret
     raise Exception(f'Unsupported protocol {data[:10]}')
 
-MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, pack=Pack, ws=WS, ssl='', secure='')
+MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, ssh=SSH, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, pack=Pack, ws=WS, ssl='', secure='')
 MAPPINGS['in'] = ''
 
 def get_protos(rawprotos):
