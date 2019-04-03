@@ -321,7 +321,7 @@ class ProxyURI(object):
                 if host == 'tunnel':
                     raise Exception('Unknown tunnel endpoint')
                 local_addr = local_addr if lbind == 'in' else (lbind, 0) if lbind else None
-                family = 0 if local_addr is None else 30 if ':' in local_addr[0] else 2
+                family = 0 # if local_addr is None else 30 if ':' in local_addr[0] else 2
                 wait = asyncio.open_connection(host=host, port=port, local_addr=local_addr, family=family)
             elif self.ssh:
                 try:
@@ -337,7 +337,7 @@ class ProxyURI(object):
                 else:
                     client_keys = None
                 local_addr = local_addr if self.lbind == 'in' else (self.lbind, 0) if self.lbind else None
-                family = 0 if local_addr is None else 30 if ':' in local_addr[0] else 2
+                family = 0 # if local_addr is None else 30 if ':' in local_addr[0] else 2
                 conn = await asyncssh.connect(host=self.host_name, port=self.port, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys)
                 if not self.streams.done():
                     self.streams.set_result((conn, None))
@@ -348,7 +348,7 @@ class ProxyURI(object):
                 wait = asyncio.open_unix_connection(path=self.bind, ssl=self.sslclient, server_hostname='' if self.sslclient else None)
             else:
                 local_addr = local_addr if self.lbind == 'in' else (self.lbind, 0) if self.lbind else None
-                family = 0 if local_addr is None else 30 if ':' in local_addr[0] else 2
+                family = 0 # if local_addr is None else 30 if ':' in local_addr[0] else 2
                 wait = asyncio.open_connection(host=self.host_name, port=self.port, ssl=self.sslclient, local_addr=local_addr, family=family)
             reader, writer = await asyncio.wait_for(wait, timeout=SOCKET_TIMEOUT)
         except Exception as ex:
