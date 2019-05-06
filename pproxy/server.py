@@ -210,10 +210,15 @@ class BackwardConnection(object):
             try:
                 reader, writer = await asyncio.wait_for(wait, timeout=SOCKET_TIMEOUT)
                 self.writer = writer
-                data = await reader.read_()
+                try:
+                    data = await reader.read_n(1)
+                except asyncio.TimeoutError:
+                    data = None
                 if data:
                     reader._buffer[0:0] = data
                     asyncio.ensure_future(handler(reader, writer))
+                else:
+                    writer.close()
                 errwait = 0
             except Exception as ex:
                 try:
@@ -222,7 +227,7 @@ class BackwardConnection(object):
                     pass
                 if not self.closed:
                     await asyncio.sleep(errwait)
-                    errwait = errwait*1.3 + 0.1
+                    errwait = min(errwait*1.3 + 0.1, 30)
     def client_run(self):
         async def handler(reader, writer):
             while not self.conn.empty():
