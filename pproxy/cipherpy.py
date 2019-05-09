@@ -59,6 +59,20 @@ class RC4_MD5_Cipher(RC4_Cipher):
         RC4_Cipher.setup(self)
 
 ROL = lambda a, b: a<<b&0xffffffff|(a&0xffffffff)>>32-b
+ORDERS_CHACHA20 = ((0,4,8,12),(1,5,9,13),(2,6,10,14),(3,7,11,15),(0,5,10,15),(1,6,11,12),(2,7,8,13),(3,4,9,14)) * 10
+ORDERS_SALSA20 = ((4,0,12,8),(9,5,1,13),(14,10,6,2),(3,15,11,7),(1,0,3,2),(6,5,4,7),(11,10,9,8),(12,15,14,13)) * 10
+def ChaCha20_round(H):
+    for a, b, c, d in ORDERS_CHACHA20:
+        H[a] += H[b]
+        H[d] = ROL(H[d]^H[a], 16)
+        H[c] += H[d]
+        H[b] = ROL(H[b]^H[c], 12)
+        H[a] += H[b]
+        H[d] = ROL(H[d]^H[a], 8)
+        H[c] += H[d]
+        H[b] = ROL(H[b]^H[c], 7)
+    return H
+
 class ChaCha20_Cipher(StreamCipher):
     KEY_LENGTH = 32
     IV_LENGTH = 8
@@ -67,26 +81,28 @@ class ChaCha20_Cipher(StreamCipher):
         self.counter = counter
     def core(self):
         data = list(struct.unpack('<16I', b'expand 32-byte k' + self.key + self.counter.to_bytes(4, 'little') + self.iv.rjust(12, b'\x00')))
-        ORDERS = ((0,4,8,12),(1,5,9,13),(2,6,10,14),(3,7,11,15),(0,5,10,15),(1,6,11,12),(2,7,8,13),(3,4,9,14)) * 10
         while 1:
-            H = data[:]
-            for a, b, c, d in ORDERS:
-                H[a] += H[b]
-                H[d] = ROL(H[d]^H[a], 16)
-                H[c] += H[d]
-                H[b] = ROL(H[b]^H[c], 12)
-                H[a] += H[b]
-                H[d] = ROL(H[d]^H[a], 8)
-                H[c] += H[d]
-                H[b] = ROL(H[b]^H[c], 7)
-            yield from struct.pack('<16I', *(a+b&0xffffffff for a, b in zip(H, data)))
+            yield from struct.pack('<16I', *(a+b&0xffffffff for a, b in zip(ChaCha20_round(data[:]), data)))
             data[12:14] = (0, data[13]+1) if data[12]==0xffffffff else (data[12]+1, data[13])
 
 class ChaCha20_IETF_Cipher(ChaCha20_Cipher):
     IV_LENGTH = 12
 
-def poly1305(cipher_new, nonce, ciphertext):
-    otk = cipher_new(nonce).encrypt(bytes(32))
+class XChaCha20_Cipher(ChaCha20_Cipher):
+    IV_LENGTH = 16+8
+    def core(self):
+        H = ChaCha20_round(list(struct.unpack('<16I', b'expand 32-byte k' + self.key + self.iv[:16])))
+        key = struct.pack('<8I', *(i&0xffffffff for i in (H[:4]+H[12:])))
+        data = list(struct.unpack('<16I', b'expand 32-byte k' + key + self.counter.to_bytes(4, 'little') + self.iv[16:].rjust(12, b'\x00')))
+        while 1:
+            yield from struct.pack('<16I', *(a+b&0xffffffff for a, b in zip(ChaCha20_round(data[:]), data)))
+            data[12:14] = (0, data[13]+1) if data[12]==0xffffffff else (data[12]+1, data[13])
+
+class XChaCha20_IETF_Cipher(XChaCha20_Cipher):
+    IV_LENGTH = 16+12
+
+def poly1305(cipher_encrypt, nonce, ciphertext):
+    otk = cipher_encrypt(nonce, bytes(32))
     mac_data = ciphertext + bytes((-len(ciphertext))%16 + 8) + len(ciphertext).to_bytes(8, 'little')
     acc, r, s = 0, int.from_bytes(otk[:16], 'little') & 0x0ffffffc0ffffffc0ffffffc0fffffff, int.from_bytes(otk[16:], 'little')
     for i in range(0, len(mac_data), 16):
@@ -102,25 +118,29 @@ class ChaCha20_IETF_POLY1305_Cipher(AEADCipher):
     def process(self, s, tag=None):
         nonce = self.nonce
         if tag is not None:
-            assert tag == poly1305(self.cipher_new, nonce, s)
-        data = self.cipher_new(nonce, counter=1).encrypt(s)
+            assert tag == poly1305(self.cipher_encrypt, nonce, s)
+        data = self.cipher_encrypt(nonce, s, counter=1)
         if tag is None:
-            return data, poly1305(self.cipher_new, nonce, data)
+            return data, poly1305(self.cipher_encrypt, nonce, data)
         else:
             return data
     encrypt_and_digest = decrypt_and_verify = process
     def setup(self):
-        self.cipher_new = lambda nonce, counter=0: ChaCha20_IETF_Cipher(self.key, setup_key=False, counter=counter).setup_iv(nonce)
+        self.cipher_encrypt = lambda nonce, s, counter=0: ChaCha20_IETF_Cipher(self.key, setup_key=False, counter=counter).setup_iv(nonce).encrypt(s)
+
+class XChaCha20_IETF_POLY1305_Cipher(ChaCha20_IETF_POLY1305_Cipher):
+    NONCE_LENGTH = 16+12
+    def setup(self):
+        self.cipher_encrypt = lambda nonce, s, counter=0: XChaCha20_IETF_Cipher(self.key, setup_key=False, counter=counter).setup_iv(nonce).encrypt(s)
 
 class Salsa20_Cipher(StreamCipher):
     KEY_LENGTH = 32
     IV_LENGTH = 8
     def core(self):
         data = list(struct.unpack('<16I', b'expa' + self.key[:16] + b'nd 3' + self.iv.ljust(16, b'\x00') + b'2-by' + self.key[16:] + b'te k'))
-        ORDERS = ((4,0,12,8),(9,5,1,13),(14,10,6,2),(3,15,11,7),(1,0,3,2),(6,5,4,7),(11,10,9,8),(12,15,14,13)) * 10
         while 1:
             H = data[:]
-            for a, b, c, d in ORDERS:
+            for a, b, c, d in ORDERS_SALSA20:
                 H[a] ^= ROL(H[b]+H[c], 7)
                 H[d] ^= ROL(H[a]+H[b], 9)
                 H[c] ^= ROL(H[d]+H[a], 13)
