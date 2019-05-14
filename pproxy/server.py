@@ -467,7 +467,7 @@ class ProxyURI(object):
                         alive=True, direct='direct' in protonames, tunnel='tunnel' in protonames, \
                         reuse='pack' in protonames or relay and relay.reuse, backward='in' in rawprotos, \
                         ssh='ssh' in rawprotos, relay=relay)
-ProxyURI.DIRECT = ProxyURI(direct=True, tunnel=False, reuse=False, relay=None, alive=True, match=None, cipher=None, backward=None, ssh=None)
+ProxyURI.DIRECT = ProxyURI(direct=True, tunnel=False, reuse=False, relay=None, alive=True, match=None, cipher=None, backward=None, ssh=None, lbind=None)
 
 async def test_url(url, rserver):
     url = urllib.parse.urlparse(url)
