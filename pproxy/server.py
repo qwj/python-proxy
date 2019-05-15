@@ -513,11 +513,23 @@ def main():
     parser.add_argument('--pac', help='http PAC path')
     parser.add_argument('--get', dest='gets', default=[], action='append', help='http custom {path,file}')
     parser.add_argument('--auth', dest='authtime', type=int, default=86400*30, help='re-auth time interval for same ip (default: 86400*30)')
+    parser.add_argument('--daemon', dest="daemon", action='store_true', help='run as a daemon and return the PID. Linux/Mac only')
     parser.add_argument('--sys', action='store_true', help='change system proxy setting (mac, windows)')
     parser.add_argument('--reuse', dest='ruport', action='store_true', help='set SO_REUSEPORT (Linux only)')
     parser.add_argument('--test', help='test this url for all remote proxies and exit')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
+
+    if args.daemon:
+        from os import fork
+        from sys import exit
+        pid = fork()
+        if pid > 0:
+            exit(0)
+        pid = fork()
+        if pid > 0:
+            print(f"Daemon PID {pid}")
+            exit(0)
     if args.test:
         asyncio.get_event_loop().run_until_complete(test_url(args.test, args.rserver))
         return
