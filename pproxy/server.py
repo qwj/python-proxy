@@ -1,6 +1,11 @@
 import argparse, time, re, asyncio, functools, base64, random, urllib.parse, socket
+import signal, os
 from . import proto
 from .__doc__ import *
+
+
+if (os.name == 'nt'):
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 SOCKET_TIMEOUT = 300
 PACKET_SIZE = 65536
