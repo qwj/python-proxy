@@ -1,8 +1,12 @@
 import time, sys, asyncio, functools
 
 b2s = lambda i: f'{i/2**30:.1f}G' if i>=2**30 else f'{i/2**20:.1f}M' if i>=2**20 else f'{i/1024:.1f}K'
-def all_stat(stats):
+
+def all_stat_other(stats):
     cmd = sys.stdin.readline()
+    all_stat(stats)
+
+def all_stat(stats):
     if len(stats) <= 1:
         print('no traffic')
         return
@@ -52,8 +56,14 @@ def setup(loop, args):
         tostat = (stats[0], stats.setdefault(remote_ip, {}).setdefault(host_name_2, [0]*6))
         return lambda i: lambda s: [st.__setitem__(i, st[i] + s) for st in tostat]
     args.modstat = modstat
+    def win_readline(handler):
+        while True:
+            line = sys.stdin.readline()
+            handler()
     if args.v >= 2:
         asyncio.ensure_future(realtime_stat(args.stats[0]))
-        loop.add_reader(sys.stdin, functools.partial(all_stat, args.stats))
-
+        if sys.platform != 'win32':
+            loop.add_reader(sys.stdin, functools.partial(all_stat_other, args.stats))
+        else:
+            loop.run_in_executor(None, win_readline, functools.partial(all_stat, args.stats))
 
