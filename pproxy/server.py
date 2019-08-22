@@ -500,21 +500,6 @@ async def test_url(url, rserver):
     print(f'============ success ============')
 
 def main():
-    import importlib
-    uvloop_exists = importlib.util.find_spec("uvloop")
-    c_crypto_exists = importlib.util.find_spec("Crypto")
-
-    # Try to use uvloop instead of the default event loop
-    if uvloop_exists:
-        import uvloop
-        uvloop.install()
-        print("Using uvloop")
-    else:
-        print("Using default event loop")
-
-    if c_crypto_exists:
-        print("Using optimized C ciphers")
-
     parser = argparse.ArgumentParser(description=__description__+'\nSupported protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect,pf,tunnel', epilog=f'Online help: <{__url__}>')
     parser.add_argument('-l', dest='listen', default=[], action='append', type=ProxyURI.compile, help='tcp server uri (default: http+socks4+socks5://:8080/)')
     parser.add_argument('-r', dest='rserver', default=[], action='append', type=ProxyURI.compile_relay, help='tcp remote server uri (default: direct)')
@@ -562,12 +547,16 @@ def main():
         return
     if args.daemon:
         try:
-            import daemon
-        except:
-            print("Missing library: pip install python-daemon")
-            exit(-1)
-        _daemon = daemon.DaemonContext()
-        _daemon.open()
+            __import__('daemon').DaemonContext().open()
+        except ModuleNotFoundError:
+            print("Missing library: pip3 install python-daemon")
+            return
+    # Try to use uvloop instead of the default event loop
+    try:
+        __import__('uvloop').install()
+        print('Using uvloop')
+    except ModuleNotFoundError:
+        pass
     loop = asyncio.get_event_loop()
     if args.v:
         from . import verbose
