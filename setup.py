@@ -38,10 +38,14 @@ setup(
     extras_require      = {
         'accelerated': [
             'pycryptodome >= 3.7.2',
+            'uvloop >= 0.13.0'
         ],
         'sshtunnel': [
             'asyncssh >= 1.16.0',
         ],
+        'daemon': [
+            'python-daemon >= 2.2.3',
+        ]
     },
     install_requires    = [],
     entry_points        = {
