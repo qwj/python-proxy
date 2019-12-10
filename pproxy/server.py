@@ -186,8 +186,9 @@ async def check_server_alive(interval, rserver, verbose):
                 pass
 
 class BackwardConnection(object):
-    def __init__(self, uri):
+    def __init__(self, uri, count):
         self.uri = uri
+        self.count = count
         self.closed = False
         self.conn = asyncio.Queue()
         self.open_connection = self.conn.get
@@ -198,7 +199,8 @@ class BackwardConnection(object):
         except Exception:
             pass
     async def start_server(self, handler):
-        asyncio.ensure_future(self.server_run(handler))
+        for _ in range(self.count):
+            asyncio.ensure_future(self.server_run(handler))
         return self
     async def server_run(self, handler):
         errwait = 0
@@ -248,7 +250,7 @@ class ProxyURI(object):
         self.handler = None
         self.streams = None
         if self.backward:
-            self.backward = BackwardConnection(self)
+            self.backward = BackwardConnection(self, self.backward)
     def logtext(self, host, port):
         if self.direct:
             return f' -> {host}:{port}'
@@ -465,7 +467,7 @@ class ProxyURI(object):
                         match=match, bind=loc or urlpath, host_name=host_name, port=port, \
                         unix=not loc, lbind=lbind, sslclient=sslclient, sslserver=sslserver, \
                         alive=True, direct='direct' in protonames, tunnel='tunnel' in protonames, \
-                        reuse='pack' in protonames or relay and relay.reuse, backward='in' in rawprotos, \
+                        reuse='pack' in protonames or relay and relay.reuse, backward=rawprotos.count('in'), \
                         ssh='ssh' in rawprotos, relay=relay)
 ProxyURI.DIRECT = ProxyURI(direct=True, tunnel=False, reuse=False, relay=None, alive=True, match=None, cipher=None, backward=None, ssh=None, lbind=None)
 
