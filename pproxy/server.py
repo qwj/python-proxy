@@ -171,7 +171,9 @@ async def check_server_alive(interval, rserver, verbose):
             if remote.direct:
                 continue
             try:
-                _, writer = await remote.open_connection(None, None, None, None)
+                _, writer = await remote.open_connection(None, None, None, None, timeout=3)
+            except asyncio.CancelledError as ex:
+                return
             except Exception as ex:
                 if remote.alive:
                     verbose(f'{remote.rproto.name} {remote.bind} -> OFFLINE')
@@ -315,7 +317,7 @@ class ProxyURI(object):
             def datagram_received(prot, data, addr):
                 asyncio.ensure_future(datagram_handler(prot.transport, data, addr, **vars(self), **args))
         return asyncio.get_event_loop().create_datagram_endpoint(Protocol, local_addr=(self.host_name, self.port))
-    async def open_connection(self, host, port, local_addr, lbind):
+    async def open_connection(self, host, port, local_addr, lbind, timeout=SOCKET_TIMEOUT):
         if self.reuse or self.ssh:
             if self.streams is None or self.streams.done() and (self.reuse and not self.handler):
                 self.streams = asyncio.get_event_loop().create_future()
@@ -354,7 +356,7 @@ class ProxyURI(object):
                 wait = asyncio.open_unix_connection(path=self.bind, ssl=self.sslclient, server_hostname='' if self.sslclient else None)
             else:
                 wait = asyncio.open_connection(host=self.host_name, port=self.port, ssl=self.sslclient, local_addr=local_addr, family=family)
-            reader, writer = await asyncio.wait_for(wait, timeout=SOCKET_TIMEOUT)
+            reader, writer = await asyncio.wait_for(wait, timeout=timeout)
         except Exception as ex:
             if self.reuse:
                 self.streams.set_exception(ex)
