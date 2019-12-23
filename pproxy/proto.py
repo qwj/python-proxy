@@ -74,7 +74,7 @@ class SSR(BaseProtocol):
             authtable.set_authed()
             header = await reader.read_n(1)
         host_name, port, data = await socks_address_stream(reader, header[0])
-        return host_name, port, b''
+        return host_name, port
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
         writer_remote.write(rauth + b'\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big'))
 
@@ -128,7 +128,7 @@ class SS(BaseProtocol):
             checksum = hmac.new(reader_cipher.iv+reader_cipher.key, header+data, hashlib.sha1).digest()
             assert checksum[:10] == await reader.read_n(10), 'Unknown OTA checksum'
             self.patch_ota_reader(reader_cipher, reader)
-        return host_name, port, b''
+        return host_name, port
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, writer_cipher_r, **kw):
         writer_remote.write(rauth)
         if writer_cipher_r and writer_cipher_r.ota:
@@ -174,7 +174,7 @@ class Socks4(BaseProtocol):
                 raise Exception(f'Unauthorized SOCKS {auth}')
             authtable.set_authed()
         writer.write(b'\x00\x5a' + port.to_bytes(2, 'big') + ip)
-        return socket.inet_ntoa(ip), port, b''
+        return socket.inet_ntoa(ip), port
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
         ip = socket.inet_aton((await asyncio.get_event_loop().getaddrinfo(host_name, port, family=socket.AF_INET))[0][4][0])
         writer_remote.write(b'\x04\x01' + port.to_bytes(2, 'big') + ip + rauth + b'\x00')
@@ -202,7 +202,7 @@ class Socks5(BaseProtocol):
         header = await reader.read_n(1)
         host_name, port, data = await socks_address_stream(reader, header[0])
         writer.write(b'\x05\x00\x00' + header + data)
-        return host_name, port, b''
+        return host_name, port
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
         writer_remote.write((b'\x05\x01\x02\x01' + b''.join(packstr(i) for i in rauth.split(b':', 1)) if rauth else b'\x05\x01\x00') + b'\x05\x01\x00\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big'))
         await reader_remote.read_until(b'\x00\x05\x00\x00')
@@ -250,14 +250,13 @@ class HTTP(BaseProtocol):
         if method == 'CONNECT':
             host_name, port = path.split(':', 1)
             port = int(port)
-            writer.write(f'{ver} 200 OK\r\nConnection: close\r\n\r\n'.encode())
-            return host_name, port, b''
+            return host_name, port, f'{ver} 200 OK\r\nConnection: close\r\n\r\n'.encode()
         else:
             url = urllib.parse.urlparse(path)
             host_name = url.hostname
             port = url.port or 80
             newpath = url._replace(netloc='', scheme='').geturl()
-            return host_name, port, f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode()
+            return host_name, port, b'', f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode()
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
         writer_remote.write(f'CONNECT {host_name}:{port} HTTP/1.1\r\nHost: {myhost}'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
         await reader_remote.read_until(b'\r\n\r\n')
@@ -324,7 +323,7 @@ class Transparent(BaseProtocol):
                 raise Exception(f'Unauthorized {self.name}')
             authtable.set_authed()
         remote = self.query_remote(sock)
-        return remote[0], remote[1], b''
+        return remote[0], remote[1]
     def udp_parse(self, data, auth, sock, **kw):
         reader = io.BytesIO(data)
         if auth and reader.read(len(auth)) != auth:
@@ -445,12 +444,12 @@ class WS(BaseProtocol):
         writer.write(f'{ver} 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {rseckey}\r\nSec-WebSocket-Protocol: chat\r\n\r\n'.encode())
         self.patch_ws_stream(reader, writer, False)
         if not self.param:
-            return 'tunnel', 0, b''
+            return 'tunnel', 0
         host, _, port = self.param.partition(':')
         dst = sock.getsockname()
         host = host or dst[0]
         port = int(port) if port else dst[1]
-        return host, port, b''
+        return host, port
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
         seckey = base64.b64encode(os.urandom(16)).decode()
         writer_remote.write(f'GET / HTTP/1.1\r\nHost: {myhost}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {seckey}\r\nSec-WebSocket-Protocol: chat\r\nSec-WebSocket-Version: 13'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
@@ -552,6 +551,8 @@ async def parse(protos, reader, **kw):
         header = None
     if proto is not None:
         ret = await proto.parse(header=header, reader=reader, **kw)
+        while len(ret) < 4:
+            ret += (b'',)
         return (proto,) + ret
     raise Exception(f'Unsupported protocol {header}')
 

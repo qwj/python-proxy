@@ -61,7 +61,7 @@ async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, a
             remote_text = f'{remote_ip}:{remote_port}'
         local_addr = None if server_ip in ('127.0.0.1', '::1', None) else (server_ip, 0)
         reader_cipher, _ = await prepare_ciphers(cipher, reader, writer, server_side=False)
-        lproto, host_name, port, initbuf = await proto.parse(protos, reader=reader, writer=writer, authtable=AuthTable(remote_ip, authtime), reader_cipher=reader_cipher, sock=writer.get_extra_info('socket'), **kwargs)
+        lproto, host_name, port, lbuf, rbuf = await proto.parse(protos, reader=reader, writer=writer, authtable=AuthTable(remote_ip, authtime), reader_cipher=reader_cipher, sock=writer.get_extra_info('socket'), **kwargs)
         if host_name == 'echo':
             asyncio.ensure_future(lproto.channel(reader, writer, DUMMY, DUMMY))
         elif host_name == 'empty':
@@ -77,12 +77,13 @@ async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, a
                 raise Exception(f'Connection timeout {roption.bind}')
             try:
                 reader_remote, writer_remote = await roption.prepare_connection(reader_remote, writer_remote, host_name, port)
-                writer_remote.write(initbuf)
+                writer.write(lbuf)
+                writer_remote.write(rbuf)
             except Exception:
                 writer_remote.close()
                 raise Exception('Unknown remote protocol')
             m = modstat(remote_ip, host_name)
-            lchannel = lproto.http_channel if initbuf else lproto.channel
+            lchannel = lproto.http_channel if rbuf else lproto.channel
             asyncio.ensure_future(lproto.channel(reader_remote, writer, m(2+roption.direct), m(4+roption.direct)))
             asyncio.ensure_future(lchannel(reader, writer_remote, m(roption.direct), roption.connection_change))
     except Exception as ex:
