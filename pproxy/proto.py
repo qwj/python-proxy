@@ -271,7 +271,7 @@ class HTTP(BaseProtocol):
                     if b'\r\n\r\n' not in data:
                         data += await reader.readuntil(b'\r\n\r\n')
                     lines, data = data.split(b'\r\n\r\n', 1)
-                    headers = lines[:-4].decode().split('\r\n')
+                    headers = lines.decode().split('\r\n')
                     method, path, ver = HTTP_LINE.match(headers.pop(0)).groups()
                     lines = '\r\n'.join(i for i in headers if not i.startswith('Proxy-'))
                     headers = dict(i.split(': ', 1) for i in headers if ': ' in i)
