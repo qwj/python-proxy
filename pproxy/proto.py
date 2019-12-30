@@ -289,21 +289,21 @@ class HTTP(BaseProtocol):
 class HTTPOnly(HTTP):
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
         buffer = bytearray()
-        header = None
+        HOST_NAME = re.compile('\r\nHost: ([^\r\n]+)\r\n', re.I)
         def write(data, o=writer_remote.write):
-            nonlocal header
             if not data: return
-            if header:
-                return o(data)
             buffer.extend(data)
-            pos = buffer.find(10)
-            if pos != -1 or len(buffer) > 4096:
-                header = HTTP_LINE.match(buffer[:pos].decode().rstrip())
-                if not header:
+            pos = buffer.find(b'\r\n\r\n')
+            if pos != -1:
+                text = buffer[:pos].decode()
+                header = HTTP_LINE.match(text.split('\r\n', 1)[0])
+                host = HOST_NAME.search(text)
+                if not header or not host:
                     writer_remote.close()
                     raise Exception('Unknown HTTP header for protocol HTTPOnly')
                 method, path, ver = header.groups()
-                data = f'{method} http://{host_name}{":"+str(port) if port!=80 else ""}{path} {ver}'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n' + buffer[pos+1:]
+                data = f'{method} http://{host.group(1)}{path} {ver}\r\nHost: {host.group(1)}'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n' + buffer[pos+4:]
+                buffer.clear()
                 return o(data)
         writer_remote.write = write
 
