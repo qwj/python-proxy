@@ -34,8 +34,8 @@ async def prepare_ciphers(cipher, reader, writer, bind=None, server_side=True):
     else:
         return None, None
 
-def schedule(rserver, salgorithm, host_name):
-    filter_cond = lambda o: o.alive and (not o.match or o.match(host_name))
+def schedule(rserver, salgorithm, host_name, port):
+    filter_cond = lambda o: o.alive and (not o.match or o.match(host_name) or o.match(str(port)))
     if salgorithm == 'fa':
         return next(filter(filter_cond, rserver), None)
     elif salgorithm == 'rr':
@@ -69,7 +69,7 @@ async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, a
         elif block and block(host_name):
             raise Exception('BLOCK ' + host_name)
         else:
-            roption = schedule(rserver, salgorithm, host_name) or ProxyURI.DIRECT
+            roption = schedule(rserver, salgorithm, host_name, port) or ProxyURI.DIRECT
             verbose(f'{lproto.name} {remote_text}{roption.logtext(host_name, port)}')
             try:
                 reader_remote, writer_remote = await roption.open_connection(host_name, port, local_addr, lbind)
@@ -109,7 +109,7 @@ async def reuse_stream_handler(reader, writer, unix, lbind, protos, rserver, urs
         try:
             if block and block(host_name):
                 raise Exception('BLOCK ' + host_name)
-            roption = schedule(rserver, salgorithm, host_name) or ProxyURI.DIRECT
+            roption = schedule(rserver, salgorithm, host_name, port) or ProxyURI.DIRECT
             verbose(f'{lproto.name} {remote_text}{roption.logtext(host_name, port)}')
             try:
                 reader_remote, writer_remote = await roption.open_connection(host_name, port, local_addr, lbind)
@@ -132,7 +132,7 @@ async def reuse_stream_handler(reader, writer, unix, lbind, protos, rserver, urs
         try:
             if block and block(host_name):
                 raise Exception('BLOCK ' + host_name)
-            roption = schedule(urserver, salgorithm, host_name) or ProxyURI.DIRECT
+            roption = schedule(urserver, salgorithm, host_name, port) or ProxyURI.DIRECT
             verbose(f'UDP {lproto.name} {remote_text}{roption.logtext(host_name, port)}')
             data = roption.prepare_udp_connection(host_name, port, data)
             await roption.open_udp_connection(host_name, port, data, sid, sendto)
@@ -154,7 +154,7 @@ async def datagram_handler(writer, data, addr, protos, urserver, block, cipher, 
         elif block and block(host_name):
             raise Exception('BLOCK ' + host_name)
         else:
-            roption = schedule(urserver, salgorithm, host_name) or ProxyURI.DIRECT
+            roption = schedule(urserver, salgorithm, host_name, port) or ProxyURI.DIRECT
             verbose(f'UDP {lproto.name} {remote_text}{roption.logtext(host_name, port)}')
             data = roption.prepare_udp_connection(host_name, port, data)
             def reply(rdata):
@@ -408,6 +408,8 @@ class ProxyURI(object):
         await self.open_udp_connection(host, port, data, local_addr, answer_cb)
     @classmethod
     def compile_rule(cls, filename):
+        if filename.startswith("{") and filename.endswith("}"):
+            return re.compile(filename[1:-1]).match
         with open(filename) as f:
             return re.compile('(:?'+''.join('|'.join(i.strip() for i in f if i.strip() and not i.startswith('#')))+')$').match
     @classmethod
