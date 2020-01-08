@@ -51,8 +51,9 @@ def schedule(rserver, salgorithm, host_name, port):
     else:
         raise Exception('Unknown scheduling algorithm') #Unreachable
 
-async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, authtime=86400*30, block=None, salgorithm='fa', verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
+async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, sslserver, authtime=86400*30, block=None, salgorithm='fa', verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
     try:
+        reader, writer = proto.sslwrap(reader, writer, sslserver, True, None, verbose)
         if unix:
             remote_ip, server_ip, remote_text = 'local', None, 'unix_local'
         else:
@@ -184,6 +185,8 @@ async def check_server_alive(interval, rserver, verbose):
                 verbose(f'{remote.rproto.name} {remote.bind} -> ONLINE')
                 remote.alive = True
             try:
+                if remote.backward:
+                    writer.write(b'\x00')
                 writer.close()
             except Exception:
                 pass
@@ -194,7 +197,11 @@ class BackwardConnection(object):
         self.count = count
         self.closed = False
         self.conn = asyncio.Queue()
-        self.open_connection = self.conn.get
+    async def open_connection(self):
+        while True:
+            reader, writer = await self.conn.get()
+            if not writer.transport.is_closing():
+                return reader, writer
     def close(self):
         self.closed = True
         try:
@@ -209,9 +216,9 @@ class BackwardConnection(object):
         errwait = 0
         while not self.closed:
             if self.uri.unix:
-                wait = asyncio.open_unix_connection(path=self.uri.bind, ssl=self.uri.sslclient, server_hostname='' if self.uri.sslclient else None)
+                wait = asyncio.open_unix_connection(path=self.uri.bind)
             else:
-                wait = asyncio.open_connection(host=self.uri.host_name, port=self.uri.port, ssl=self.uri.sslclient, local_addr=(self.uri.lbind, 0) if self.uri.lbind else None)
+                wait = asyncio.open_connection(host=self.uri.host_name, port=self.uri.port, local_addr=(self.uri.lbind, 0) if self.uri.lbind else None)
             try:
                 reader, writer = await asyncio.wait_for(wait, timeout=SOCKET_TIMEOUT)
                 self.writer = writer
@@ -219,7 +226,7 @@ class BackwardConnection(object):
                     data = await reader.read_n(1)
                 except asyncio.TimeoutError:
                     data = None
-                if data:
+                if data and data[0] != 0:
                     reader._buffer[0:0] = data
                     asyncio.ensure_future(handler(reader, writer))
                 else:
@@ -233,17 +240,13 @@ class BackwardConnection(object):
                 if not self.closed:
                     await asyncio.sleep(errwait)
                     errwait = min(errwait*1.3 + 0.1, 30)
-    def client_run(self):
+    def client_run(self, args):
         async def handler(reader, writer):
-            while not self.conn.empty():
-                r, w = await self.conn.get()
-                try: w.close()
-                except Exception: pass
             await self.conn.put((reader, writer))
         if self.uri.unix:
-            return asyncio.start_unix_server(handler, path=self.uri.bind, ssl=self.uri.sslserver)
+            return asyncio.start_unix_server(handler, path=self.uri.bind)
         else:
-            return asyncio.start_server(handler, host=self.uri.host_name, port=self.uri.port, ssl=self.uri.sslserver)
+            return asyncio.start_server(handler, host=self.uri.host_name, port=self.uri.port, reuse_port=args.get('ruport'))
 
 class ProxyURI(object):
     def __init__(self, **kw):
@@ -354,9 +357,9 @@ class ProxyURI(object):
             elif self.backward:
                 wait = self.backward.open_connection()
             elif self.unix:
-                wait = asyncio.open_unix_connection(path=self.bind, ssl=self.sslclient, server_hostname='' if self.sslclient else None)
+                wait = asyncio.open_unix_connection(path=self.bind)
             else:
-                wait = asyncio.open_connection(host=self.host_name, port=self.port, ssl=self.sslclient, local_addr=local_addr, family=family)
+                wait = asyncio.open_connection(host=self.host_name, port=self.port, local_addr=local_addr, family=family)
             reader, writer = await asyncio.wait_for(wait, timeout=timeout)
         except Exception as ex:
             if self.reuse:
@@ -370,6 +373,7 @@ class ProxyURI(object):
         return self.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port, self.handler)
     async def prepare_ciphers_and_headers(self, reader_remote, writer_remote, host, port, handler):
         if not self.direct:
+            reader_remote, writer_remote = proto.sslwrap(reader_remote, writer_remote, self.sslclient, False, self.host_name)
             if not handler or not handler.ready:
                 _, writer_cipher_r = await prepare_ciphers(self.cipher, reader_remote, writer_remote, self.bind)
             else:
@@ -390,9 +394,9 @@ class ProxyURI(object):
         if self.backward:
             return self.backward.start_server(handler)
         elif self.unix:
-            return asyncio.start_unix_server(handler, path=self.bind, ssl=self.sslserver)
+            return asyncio.start_unix_server(handler, path=self.bind)
         else:
-            return asyncio.start_server(handler, host=self.host_name, port=self.port, ssl=self.sslserver, reuse_port=args.get('ruport'))
+            return asyncio.start_server(handler, host=self.host_name, port=self.port, reuse_port=args.get('ruport'))
     async def tcp_connect(self, host, port, local_addr=None, lbind=None):
         reader, writer = await self.open_connection(host, port, local_addr, lbind)
         try:
@@ -478,10 +482,10 @@ ProxyURI.DIRECT = ProxyURI(direct=True, tunnel=False, reuse=False, relay=None, a
 
 async def test_url(url, rserver):
     url = urllib.parse.urlparse(url)
-    assert url.scheme in ('http', ), f'Unknown scheme {url.scheme}'
+    assert url.scheme in ('http', 'https'), f'Unknown scheme {url.scheme}'
     host_name, _, port = url.netloc.partition(':')
     port = int(port) if port else 80 if url.scheme == 'http' else 443
-    initbuf = f'GET {url.path or "/"} HTTP/1.1\r\nHost: {host_name}\r\nUser-Agent: pproxy-{__version__}\r\nConnection: close\r\n\r\n'.encode()
+    initbuf = f'GET {url.path or "/"} HTTP/1.1\r\nHost: {host_name}\r\nUser-Agent: pproxy-{__version__}\r\nAccept: */*\r\nConnection: close\r\n\r\n'.encode()
     for roption in rserver:
         print(f'============ {roption.bind} ============')
         try:
@@ -493,6 +497,12 @@ async def test_url(url, rserver):
         except Exception:
             writer.close()
             raise Exception('Unknown remote protocol')
+        if url.scheme == 'https':
+            import ssl
+            sslclient = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+            sslclient.check_hostname = False
+            sslclient.verify_mode = ssl.CERT_NONE
+            reader, writer = proto.sslwrap(reader, writer, sslclient, False, host_name)
         writer.write(initbuf)
         headers = await reader.read_until(b'\r\n\r\n')
         print(headers.decode()[:-4])
@@ -503,7 +513,7 @@ async def test_url(url, rserver):
             if not s:
                 break
             body.extend(s)
-        print(body.decode())
+        print(body.decode('utf8', 'ignore'))
     print(f'============ success ============')
 
 def main():
@@ -587,7 +597,7 @@ def main():
         if option.backward:
             print('Serving on', option.bind, 'backward by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
             try:
-                server = loop.run_until_complete(option.backward.client_run())
+                server = loop.run_until_complete(option.backward.client_run(vars(args)))
                 servers.append(server)
             except Exception as ex:
                 print('Start server failed.\n\t==>', ex)

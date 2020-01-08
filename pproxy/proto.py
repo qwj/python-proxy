@@ -580,3 +580,55 @@ def get_protos(rawprotos):
         return 'no protocol specified', None
     return None, protos
 
+def sslwrap(reader, writer, sslcontext, server_side=False, server_hostname=None, verbose=None):
+    if sslcontext is None:
+        return reader, writer
+    ssl_reader = asyncio.StreamReader()
+    class Protocol(asyncio.Protocol):
+        def data_received(self, data):
+            ssl_reader.feed_data(data)
+        def eof_received(self):
+            ssl_reader.feed_eof()
+        def connection_lost(self, exc):
+            ssl_reader.feed_eof()
+    ssl = asyncio.sslproto.SSLProtocol(asyncio.get_event_loop(), Protocol(), sslcontext, None, server_side, server_hostname, False, None)
+    class Transport(asyncio.Transport):
+        _paused = False
+        def __init__(self, extra={}):
+            self._extra = extra
+            self.closed = False
+        def write(self, data):
+            if data and not self.closed:
+                writer.write(data)
+        def close(self):
+            self.closed = True
+            writer.close()
+        def _force_close(self, exc):
+            if not self.closed:
+                (verbose or print)(f'{exc} from {writer.get_extra_info("peername")[0]}')
+            self.close()
+        def abort(self):
+            self.close()
+    ssl.connection_made(Transport())
+    async def channel():
+        try:
+            while True:
+                data = await reader.read_()
+                if not data:
+                    break
+                ssl.data_received(data)
+        except Exception:
+            pass
+        finally:
+            ssl.eof_received()
+    asyncio.ensure_future(channel())
+    class Writer():
+        def get_extra_info(self, key):
+            return writer.get_extra_info(key)
+        def write(self, data):
+            ssl._app_transport.write(data)
+        def drain(self):
+            return writer.drain()
+        def close(self):
+            ssl._app_transport.close()
+    return ssl_reader, Writer()
