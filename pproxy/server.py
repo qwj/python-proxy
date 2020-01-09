@@ -221,6 +221,7 @@ class BackwardConnection(object):
                 wait = asyncio.open_connection(host=self.uri.host_name, port=self.uri.port, local_addr=(self.uri.lbind, 0) if self.uri.lbind else None)
             try:
                 reader, writer = await asyncio.wait_for(wait, timeout=SOCKET_TIMEOUT)
+                writer.write(self.uri.auth)
                 self.writer = writer
                 try:
                     data = await reader.read_n(1)
@@ -242,7 +243,8 @@ class BackwardConnection(object):
                     errwait = min(errwait*1.3 + 0.1, 30)
     def client_run(self, args):
         async def handler(reader, writer):
-            await self.conn.put((reader, writer))
+            if not self.uri.auth or self.uri.auth == (await reader.read_n(len(self.uri.auth))):
+                await self.conn.put((reader, writer))
         if self.uri.unix:
             return asyncio.start_unix_server(handler, path=self.uri.bind)
         else:
