@@ -243,8 +243,12 @@ class BackwardConnection(object):
                     errwait = min(errwait*1.3 + 0.1, 30)
     def client_run(self, args):
         async def handler(reader, writer):
-            if not self.uri.auth or self.uri.auth == (await reader.read_n(len(self.uri.auth))):
-                await self.conn.put((reader, writer))
+            if self.uri.auth:
+                try:
+                    assert self.uri.auth == (await reader.read_n(len(self.uri.auth)))
+                except Exception:
+                    return
+            await self.conn.put((reader, writer))
         if self.uri.unix:
             return asyncio.start_unix_server(handler, path=self.uri.bind)
         else:
