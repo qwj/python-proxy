@@ -356,7 +356,7 @@ class ProxyURI(object):
                     password = None
                 else:
                     client_keys = None
-                conn = await asyncssh.connect(host=self.host_name, port=self.port, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys)
+                conn = await asyncssh.connect(host=self.host_name, port=self.port, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60)
                 if not self.streams.done():
                     self.streams.set_result((conn, None))
                 return conn, None
