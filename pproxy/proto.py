@@ -591,7 +591,7 @@ def sslwrap(reader, writer, sslcontext, server_side=False, server_hostname=None,
             ssl_reader.feed_eof()
         def connection_lost(self, exc):
             ssl_reader.feed_eof()
-    ssl = asyncio.sslproto.SSLProtocol(asyncio.get_event_loop(), Protocol(), sslcontext, None, server_side, server_hostname, False, None)
+    ssl = asyncio.sslproto.SSLProtocol(asyncio.get_event_loop(), Protocol(), sslcontext, None, server_side, server_hostname, False)
     class Transport(asyncio.Transport):
         _paused = False
         def __init__(self, extra={}):
