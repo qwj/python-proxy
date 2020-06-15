@@ -248,13 +248,16 @@ class HTTP(BaseProtocol):
                 raise Exception('Unauthorized HTTP')
             authtable.set_authed()
         if method == 'CONNECT':
-            host_name, port = path.split(':', 1)
+            host_name, port = path.rsplit(':', 1)
             port = int(port)
             return host_name, port, f'{ver} 200 OK\r\nConnection: close\r\n\r\n'.encode()
         else:
             url = urllib.parse.urlparse(path)
-            host_name = url.hostname
-            port = url.port or 80
+            if ':' in url.netloc:
+                host_name, port = url.netloc.rsplit(':', 1)
+                port = int(port)
+            else:
+                host_name, port = url.netloc, 80
             newpath = url._replace(netloc='', scheme='').geturl()
             return host_name, port, b'', f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode()
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
