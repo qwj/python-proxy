@@ -51,7 +51,7 @@ def schedule(rserver, salgorithm, host_name, port):
     else:
         raise Exception('Unknown scheduling algorithm') #Unreachable
 
-async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, sslserver, authtime=86400*30, block=None, salgorithm='fa', verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
+async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, sslserver, debug=0, authtime=86400*30, block=None, salgorithm='fa', verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
     try:
         reader, writer = proto.sslwrap(reader, writer, sslserver, True, None, verbose)
         if unix:
@@ -92,6 +92,8 @@ async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, s
             verbose(f'{str(ex) or "Unsupported protocol"} from {remote_ip}')
         try: writer.close()
         except Exception: pass
+        if debug:
+            raise
 
 async def reuse_stream_handler(reader, writer, unix, lbind, protos, rserver, urserver, block, cipher, salgorithm, verbose=DUMMY, modstat=lambda r,h:lambda i:DUMMY, **kwargs):
     try:
@@ -531,6 +533,7 @@ def main():
     parser.add_argument('-b', dest='block', type=ProxyURI.compile_rule, help='block regex rules')
     parser.add_argument('-a', dest='alived', default=0, type=int, help='interval to check remote alive (default: no check)')
     parser.add_argument('-s', dest='salgorithm', default='fa', choices=('fa', 'rr', 'rc', 'lc'), help='scheduling algorithm (default: first_available)')
+    parser.add_argument('-d', dest='debug', action='count', help='turn on debug to see tracebacks (default: no debug)')
     parser.add_argument('-v', dest='v', action='count', help='print verbose output')
     parser.add_argument('--ssl', dest='sslfile', help='certfile[,keyfile] if server listen in ssl mode')
     parser.add_argument('--pac', help='http PAC path')
