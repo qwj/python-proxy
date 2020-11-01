@@ -57,7 +57,8 @@ async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, s
         if unix:
             remote_ip, server_ip, remote_text = 'local', None, 'unix_local'
         else:
-            remote_ip, remote_port, *_ = writer.get_extra_info('peername')
+            peername = writer.get_extra_info('peername')
+            remote_ip, remote_port, *_ = peername if peername else ('unknow_remote_ip','unknow_remote_port')
             server_ip = writer.get_extra_info('sockname')[0]
             remote_text = f'{remote_ip}:{remote_port}'
         local_addr = None if server_ip in ('127.0.0.1', '::1', None) else (server_ip, 0)
