@@ -112,6 +112,8 @@ Protocols
 +-------------------+------------+------------+------------+------------+--------------+
 | shadowsocksR      | ✔          | ✔          |            |            | ssr://       |
 +-------------------+------------+------------+------------+------------+--------------+
+| trojan            | ✔          | ✔          |            |            | trojan://    |
++-------------------+------------+------------+------------+------------+--------------+
 | ssh tunnel        |            | ✔          |            |            | ssh://       |
 +-------------------+------------+------------+------------+------------+--------------+
 | iptables nat      | ✔          |            |            |            | redir://     |
@@ -230,6 +232,8 @@ URI Syntax
     +----------+-----------------------------+
     | ssr      | shadowsocksr (SSR) protocol |
     +----------+-----------------------------+
+    | trojan   | trojan_ protocol            |
+    +----------+-----------------------------+
     | ssh      | ssh client tunnel           |
     +----------+-----------------------------+
     | redir    | redirect (iptables nat)     |
@@ -248,6 +252,8 @@ URI Syntax
     +----------+-----------------------------+
     | direct   | direct connection           |
     +----------+-----------------------------+
+
+.. _trojan: https://trojan-gfw.github.io/trojan/protocol
 
   - "http://" accepts GET/POST/CONNECT as server, sends CONNECT as client. "httponly://" sends "GET/POST" as client, works only on http traffic.
 
@@ -668,6 +674,16 @@ Examples
     $ pproxy -l http://:8080 -r ssh://remote_server.com/#login::private_key_path
 
   SSH connection known_hosts feature is disabled by default.
+
+- Trojan protocol example
+
+  Normally trojan:// should be used together with ssl://. You should specify the SSL crt/key file for ssl usage. A typical trojan server would be:
+
+  .. code:: rst
+
+    $ pproxy --ssl ssl.crt,ssl.key -l trojan+tunnel{localhost:80}+ssl://:443#yourpassword -vv
+
+  If trojan password doesn't match, the tunnal{localhost:80} will be switched to. It will be the same as a normal TLS website.
 
 
 Projects
