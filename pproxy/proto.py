@@ -37,9 +37,9 @@ class BaseProtocol:
         raise Exception(f'{self.name} don\'t support UDP server')
     def udp_connect(self, rauth, host_name, port, data, **kw):
         raise Exception(f'{self.name} don\'t support UDP client')
-    def udp_client(self, data):
+    def udp_unpack(self, data):
         return data
-    def udp_client2(self, host_name, port, data):
+    def udp_pack(self, host_name, port, data):
         return data
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
         raise Exception(f'{self.name} don\'t support client')
@@ -67,7 +67,7 @@ class Direct(BaseProtocol):
 class Trojan(BaseProtocol):
     async def guess(self, reader, auth, authtable, **kw):
         header = await reader.read_w(56)
-        toauth = hashlib.sha224(auth if auth else b'').hexdigest()
+        toauth = hashlib.sha224(auth or b'').hexdigest()
         if header == toauth.encode():
             authtable.set_authed()
             return True
@@ -78,7 +78,7 @@ class Trojan(BaseProtocol):
         assert await reader.read_n(2) == b'\x0d\x0a'
         return host_name, port
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
-        toauth = hashlib.sha224(rauth if rauth else b'').hexdigest().encode()
+        toauth = hashlib.sha224(rauth or b'').hexdigest().encode()
         writer_remote.write(toauth + b'\x0d\x0a\x01\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big') + b'\x0d\x0a')
 
 class SSR(BaseProtocol):
@@ -171,12 +171,12 @@ class SS(BaseProtocol):
             return
         host_name, port = socks_address(reader, n)
         return host_name, port, reader.read()
-    def udp_client(self, data):
+    def udp_unpack(self, data):
         reader = io.BytesIO(data)
         n = reader.read(1)[0]
         host_name, port = socks_address(reader, n)
         return reader.read()
-    def udp_client2(self, host_name, port, data):
+    def udp_pack(self, host_name, port, data):
         try:
             return b'\x01' + socket.inet_aton(host_name) + port.to_bytes(2, 'big') + data
         except Exception:

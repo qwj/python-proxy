@@ -164,7 +164,7 @@ async def datagram_handler(writer, data, addr, protos, urserver, block, cipher, 
             verbose(f'UDP {lproto.name} {remote_text}{roption.logtext(host_name, port)}')
             data = roption.prepare_udp_connection(host_name, port, data)
             def reply(rdata):
-                rdata = lproto.udp_client2(host_name, port, rdata)
+                rdata = lproto.udp_pack(host_name, port, rdata)
                 writer.sendto(cipher.datagram.encrypt(rdata) if cipher else rdata, addr)
             await roption.open_udp_connection(host_name, port, data, addr, reply)
     except Exception as ex:
@@ -298,7 +298,7 @@ class ProxyURI(object):
                 prot.update = time.perf_counter()
             def datagram_received(prot, data, addr):
                 data = self.cipher.datagram.decrypt(data) if self.cipher else data
-                data = self.rproto.udp_client(data) if not self.direct else data
+                data = self.rproto.udp_unpack(data) if not self.direct else data
                 reply(data)
                 prot.update = time.perf_counter()
             def connection_lost(prot, exc):
