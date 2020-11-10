@@ -51,9 +51,10 @@ def setup(loop, args):
         sys.stdout.flush()
     args.verbose = verbose
     args.stats = {0: [0]*6}
-    def modstat(remote_ip, host_name, stats=args.stats):
+    def modstat(user, remote_ip, host_name, stats=args.stats):
+        u = user.decode().split(':')[0]+':' if isinstance(user, (bytes,bytearray)) else ''
         host_name_2 = '.'.join(host_name.split('.')[-3 if host_name.endswith('.com.cn') else -2:]) if host_name.split('.')[-1].isalpha() else host_name
-        tostat = (stats[0], stats.setdefault(remote_ip, {}).setdefault(host_name_2, [0]*6))
+        tostat = (stats[0], stats.setdefault(u+remote_ip, {}).setdefault(host_name_2, [0]*6))
         return lambda i: lambda s: [st.__setitem__(i, st[i] + s) for st in tostat]
     args.modstat = modstat
     def win_readline(handler):
