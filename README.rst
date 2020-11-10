@@ -683,7 +683,7 @@ Examples
 
     $ pproxy --ssl ssl.crt,ssl.key -l trojan+tunnel{localhost:80}+ssl://:443#yourpassword -vv
 
-  If trojan password doesn't match, the tunnal{localhost:80} will be switched to. It will be the same as a normal TLS website.
+  If trojan password doesn't match, the tunnal{localhost:80} will be switched to. It looks exactly the same as a common HTTPS website.
 
 
 Projects
