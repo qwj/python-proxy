@@ -85,14 +85,13 @@ class SSR(BaseProtocol):
     async def guess(self, reader, auth, authtable, **kw):
         if auth:
             header = await reader.read_w(len(auth))
-            if header == auth:
-                authtable.set_authed()
-                return True
-        else:
-            header = await reader.read_w(1)
-            if header[0] in (1, 3, 4):
-                return True
+            if header != auth:
+                reader.rollback(header)
+                return False
+            authtable.set_authed()
+        header = await reader.read_w(1)
         reader.rollback(header)
+        return header[0] in (1, 3, 4)
     async def accept(self, reader, **kw):
         host_name, port, data = await socks_address_stream(reader, (await reader.read_n(1))[0])
         return host_name, port
@@ -103,14 +102,13 @@ class SS(BaseProtocol):
     async def guess(self, reader, auth, authtable, **kw):
         if auth:
             header = await reader.read_w(len(auth))
-            if header == auth:
-                authtable.set_authed()
-                return True
-        else:
-            header = await reader.read_w(1)
-            if header[0] in (1, 3, 4, 17, 19, 20):
-                return True
+            if header != auth:
+                reader.rollback(header)
+                return False
+            authtable.set_authed()
+        header = await reader.read_w(1)
         reader.rollback(header)
+        return header[0] in (1, 3, 4, 17, 19, 20)
     def patch_ota_reader(self, cipher, reader):
         chunk_id, data_len, _buffer = 0, None, bytearray()
         def decrypt(s):
