@@ -198,14 +198,20 @@ class Socks5(BaseProtocol):
             writer.write(b'\x05\x00')
         if auth:
             authtable.set_authed()
-        assert (await reader.read_n(3)) == b'\x05\x01\x00', 'Unknown SOCKS protocol'
+        assert await reader.read_n(3) == b'\x05\x01\x00', 'Unknown SOCKS protocol'
         header = await reader.read_n(1)
         host_name, port, data = await socks_address_stream(reader, header[0])
         writer.write(b'\x05\x00\x00' + header + data)
         return host_name, port
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
-        writer_remote.write((b'\x05\x01\x02\x01' + b''.join(packstr(i) for i in rauth.split(b':', 1)) if rauth else b'\x05\x01\x00') + b'\x05\x01\x00\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big'))
-        await reader_remote.read_until(b'\x00\x05\x00\x00')
+        if rauth:
+            writer_remote.write(b'\x05\x01\x02\x01' + b''.join(packstr(i) for i in rauth.split(b':', 1)))
+            assert await reader_remote.read_n(2) == b'\x01\x00'
+        else:
+            writer_remote.write(b'\x05\x01\x00')
+            assert await reader_remote.read_n(2) == b'\x05\x00'
+        writer_remote.write(b'\x05\x01\x00\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big'))
+        assert await reader_remote.read_n(3) == b'\x05\x00\x00'
         header = (await reader_remote.read_n(1))[0]
         await reader_remote.read_n(6 if header == 1 else (18 if header == 4 else (await reader_remote.read_n(1))[0]+2))
     def udp_parse(self, data, **kw):
