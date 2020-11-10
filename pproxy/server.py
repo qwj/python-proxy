@@ -8,8 +8,10 @@ UDP_LIMIT = 30
 DUMMY = lambda s: s
 
 asyncio.StreamReader.read_ = lambda self: self.read(PACKET_SIZE)
+asyncio.StreamReader.read_w = lambda self, n: asyncio.wait_for(self.read(n), timeout=SOCKET_TIMEOUT)
 asyncio.StreamReader.read_n = lambda self, n: asyncio.wait_for(self.readexactly(n), timeout=SOCKET_TIMEOUT)
 asyncio.StreamReader.read_until = lambda self, s: asyncio.wait_for(self.readuntil(s), timeout=SOCKET_TIMEOUT)
+asyncio.StreamReader.rollback = lambda self, s: self._buffer.__setitem__(slice(0, 0), s)
 
 class AuthTable(object):
     _auth = {}
@@ -63,7 +65,7 @@ async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, s
             remote_text = f'{remote_ip}:{remote_port}'
         local_addr = None if server_ip in ('127.0.0.1', '::1', None) else (server_ip, 0)
         reader_cipher, _ = await prepare_ciphers(cipher, reader, writer, server_side=False)
-        lproto, host_name, port, lbuf, rbuf = await proto.parse(protos, reader=reader, writer=writer, authtable=AuthTable(remote_ip, authtime), reader_cipher=reader_cipher, sock=writer.get_extra_info('socket'), **kwargs)
+        lproto, host_name, port, lbuf, rbuf = await proto.accept(protos, reader=reader, writer=writer, authtable=AuthTable(remote_ip, authtime), reader_cipher=reader_cipher, sock=writer.get_extra_info('socket'), **kwargs)
         if host_name == 'echo':
             asyncio.ensure_future(lproto.channel(reader, writer, DUMMY, DUMMY))
         elif host_name == 'empty':
@@ -150,7 +152,7 @@ async def datagram_handler(writer, data, addr, protos, urserver, block, cipher, 
         remote_ip, remote_port, *_ = addr
         remote_text = f'{remote_ip}:{remote_port}'
         data = cipher.datagram.decrypt(data) if cipher else data
-        lproto, host_name, port, data = proto.udp_parse(protos, data, sock=writer.get_extra_info('socket'), **kwargs)
+        lproto, host_name, port, data = proto.udp_accept(protos, data, sock=writer.get_extra_info('socket'), **kwargs)
         if host_name == 'echo':
             writer.sendto(data, addr)
         elif host_name == 'empty':
@@ -231,7 +233,7 @@ class BackwardConnection(object):
                 except asyncio.TimeoutError:
                     data = None
                 if data and data[0] != 0:
-                    reader._buffer[0:0] = data
+                    reader.rollback(data)
                     asyncio.ensure_future(handler(reader, writer))
                 else:
                     writer.close()

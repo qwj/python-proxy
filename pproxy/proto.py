@@ -33,7 +33,7 @@ class BaseProtocol:
         return self.__class__.__name__.lower()
     def reuse(self):
         return False
-    def udp_parse(self, data, **kw):
+    def udp_accept(self, data, **kw):
         raise Exception(f'{self.name} don\'t support UDP server')
     def udp_connect(self, rauth, host_name, port, data, **kw):
         raise Exception(f'{self.name} don\'t support UDP client')
@@ -64,23 +64,53 @@ class BaseProtocol:
 class Direct(BaseProtocol):
     pass
 
-class SSR(BaseProtocol):
-    def correct_header(self, header, auth, **kw):
-        return auth and header == auth[:1] or not auth and header and header[0] in (1, 3, 4)
-    async def parse(self, header, reader, auth, authtable, **kw):
-        if auth:
-            if (await reader.read_n(len(auth)-1)) != auth[1:]:
-                raise Exception('Unauthorized SSR')
+class Trojan(BaseProtocol):
+    async def guess(self, reader, auth, authtable, **kw):
+        header = await reader.read_w(56)
+        toauth = hashlib.sha224(auth if auth else b'').hexdigest()
+        if header == toauth.encode():
             authtable.set_authed()
-            header = await reader.read_n(1)
-        host_name, port, data = await socks_address_stream(reader, header[0])
+            return True
+        reader.rollback(header)
+    async def accept(self, reader, **kw):
+        assert await reader.read_n(3) == b'\x0d\x0a\x01'
+        host_name, port, _ = await socks_address_stream(reader, (await reader.read_n(1))[0])
+        assert await reader.read_n(2) == b'\x0d\x0a'
+        return host_name, port
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
+        toauth = hashlib.sha224(rauth if rauth else b'').hexdigest().encode()
+        writer_remote.write(toauth + b'\x0d\x0a\x01\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big') + b'\x0d\x0a')
+
+class SSR(BaseProtocol):
+    async def guess(self, reader, auth, authtable, **kw):
+        if auth:
+            header = await reader.read_w(len(auth))
+            if header == auth:
+                authtable.set_authed()
+                return True
+        else:
+            header = await reader.read_w(1)
+            if header[0] in (1, 3, 4):
+                return True
+        reader.rollback(header)
+    async def accept(self, reader, **kw):
+        host_name, port, data = await socks_address_stream(reader, (await reader.read_n(1))[0])
         return host_name, port
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
         writer_remote.write(rauth + b'\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big'))
 
 class SS(BaseProtocol):
-    def correct_header(self, header, auth, **kw):
-        return auth and header == auth[:1] or not auth and header and header[0] in (1, 3, 4, 17, 19, 20)
+    async def guess(self, reader, auth, authtable, **kw):
+        if auth:
+            header = await reader.read_w(len(auth))
+            if header == auth:
+                authtable.set_authed()
+                return True
+        else:
+            header = await reader.read_w(1)
+            if header[0] in (1, 3, 4, 17, 19, 20):
+                return True
+        reader.rollback(header)
     def patch_ota_reader(self, cipher, reader):
         chunk_id, data_len, _buffer = 0, None, bytearray()
         def decrypt(s):
@@ -115,12 +145,8 @@ class SS(BaseProtocol):
             chunk_id += 1
             return o(len(data).to_bytes(2, 'big') + checksum[:10] + data)
         writer.write = write
-    async def parse(self, header, reader, auth, authtable, reader_cipher, **kw):
-        if auth:
-            if (await reader.read_n(len(auth)-1)) != auth[1:]:
-                raise Exception('Unauthorized SS')
-            authtable.set_authed()
-            header = await reader.read_n(1)
+    async def accept(self, reader, reader_cipher, **kw):
+        header = await reader.read_n(1)
         ota = (header[0] & 0x10 == 0x10)
         host_name, port, data = await socks_address_stream(reader, header[0])
         assert ota or not reader_cipher or not reader_cipher.ota, 'SS client must support OTA'
@@ -138,7 +164,7 @@ class SS(BaseProtocol):
             self.patch_ota_writer(writer_cipher_r, writer_remote)
         else:
             writer_remote.write(b'\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big'))
-    def udp_parse(self, data, auth, **kw):
+    def udp_accept(self, data, auth, **kw):
         reader = io.BytesIO(data)
         if auth and reader.read(len(auth)) != auth:
             return
@@ -162,9 +188,12 @@ class SS(BaseProtocol):
         return rauth + b'\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big') + data
 
 class Socks4(BaseProtocol):
-    def correct_header(self, header, **kw):
-        return header == b'\x04'
-    async def parse(self, reader, writer, auth, authtable, **kw):
+    async def guess(self, reader, **kw):
+        header = await reader.read_w(1)
+        if header == b'\x04':
+            return True
+        reader.rollback(header)
+    async def accept(self, reader, writer, auth, authtable, **kw):
         assert await reader.read_n(1) == b'\x01'
         port = int.from_bytes(await reader.read_n(2), 'big')
         ip = await reader.read_n(4)
@@ -182,9 +211,12 @@ class Socks4(BaseProtocol):
         await reader_remote.read_n(6)
 
 class Socks5(BaseProtocol):
-    def correct_header(self, header, **kw):
-        return header == b'\x05'
-    async def parse(self, reader, writer, auth, authtable, **kw):
+    async def guess(self, reader, **kw):
+        header = await reader.read_w(1)
+        if header == b'\x05':
+            return True
+        reader.rollback(header)
+    async def accept(self, reader, writer, auth, authtable, **kw):
         methods = await reader.read_n((await reader.read_n(1))[0])
         if auth and (b'\x00' not in methods or not authtable.authed()):
             writer.write(b'\x05\x02')
@@ -205,8 +237,10 @@ class Socks5(BaseProtocol):
         return host_name, port
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
         if rauth:
-            writer_remote.write(b'\x05\x01\x02\x01' + b''.join(packstr(i) for i in rauth.split(b':', 1)))
-            assert await reader_remote.read_n(2) == b'\x01\x00'
+            writer_remote.write(b'\x05\x01\x02')
+            assert await reader_remote.read_n(2) == b'\x05\x02'
+            writer_remote.write(b'\x01' + b''.join(packstr(i) for i in rauth.split(b':', 1)))
+            assert await reader_remote.read_n(2) == b'\x01\x00', 'Unknown SOCKS auth'
         else:
             writer_remote.write(b'\x05\x01\x00')
             assert await reader_remote.read_n(2) == b'\x05\x00'
@@ -214,7 +248,7 @@ class Socks5(BaseProtocol):
         assert await reader_remote.read_n(3) == b'\x05\x00\x00'
         header = (await reader_remote.read_n(1))[0]
         await reader_remote.read_n(6 if header == 1 else (18 if header == 4 else (await reader_remote.read_n(1))[0]+2))
-    def udp_parse(self, data, **kw):
+    def udp_accept(self, data, **kw):
         reader = io.BytesIO(data)
         if reader.read(3) != b'\x00\x00\x00':
             return
@@ -227,10 +261,12 @@ class Socks5(BaseProtocol):
         return b'\x00\x00\x00\x03' + packstr(host_name.encode()) + port.to_bytes(2, 'big') + data
 
 class HTTP(BaseProtocol):
-    def correct_header(self, header, **kw):
-        return header and header.isalpha()
-    async def parse(self, header, reader, writer, auth, authtable, httpget=None, **kw):
-        lines = header + await reader.read_until(b'\r\n\r\n')
+    async def guess(self, reader, **kw):
+        header = await reader.read_w(4)
+        reader.rollback(header)
+        return header in (b'GET ', b'HEAD', b'POST', b'PUT ', b'DELE', b'CONN', b'OPTI', b'TRAC', b'PATC')
+    async def accept(self, reader, writer, auth, authtable, httpget=None, **kw):
+        lines = await reader.read_until(b'\r\n\r\n')
         headers = lines[:-4].decode().split('\r\n')
         method, path, ver = HTTP_LINE.match(headers.pop(0)).groups()
         lines = '\r\n'.join(i for i in headers if not i.startswith('Proxy-'))
@@ -321,24 +357,15 @@ class SSH(BaseProtocol):
         pass
 
 class Transparent(BaseProtocol):
-    def correct_header(self, header, auth, sock, **kw):
+    async def guess(self, reader, sock, **kw):
         remote = self.query_remote(sock)
-        if remote is None or sock.getsockname() == remote:
-            return False
-        return auth and header == auth[:1] or not auth
-    async def parse(self, reader, auth, authtable, sock, **kw):
-        if auth:
-            if (await reader.read_n(len(auth)-1)) != auth[1:]:
-                raise Exception(f'Unauthorized {self.name}')
-            authtable.set_authed()
+        return remote is not None and sock.getsockname() != remote
+    async def accept(self, reader, sock, **kw):
         remote = self.query_remote(sock)
         return remote[0], remote[1]
-    def udp_parse(self, data, auth, sock, **kw):
-        reader = io.BytesIO(data)
-        if auth and reader.read(len(auth)) != auth:
-            return
+    def udp_accept(self, data, auth, sock, **kw):
         remote = self.query_remote(sock)
-        return remote[0], remote[1], reader.read()
+        return remote[0], remote[1], data
 
 SO_ORIGINAL_DST = 80
 SOL_IPV6 = 41
@@ -383,13 +410,15 @@ class Tunnel(Transparent):
         port = int(port) if port else dst[1]
         return host, port
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
-        writer_remote.write(rauth)
+        pass
     def udp_connect(self, rauth, host_name, port, data, **kw):
-        return rauth + data
+        return data
 
 class WS(BaseProtocol):
-    def correct_header(self, header, **kw):
-        return header and header.isalpha()
+    async def guess(self, reader, **kw):
+        header = await reader.read_w(4)
+        reader.rollback(header)
+        return reader == b'GET '
     def patch_ws_stream(self, reader, writer, masked=False):
         data_len, mask_key, _buffer = None, None, bytearray()
         def feed_data(s, o=reader.feed_data):
@@ -430,8 +459,8 @@ class WS(BaseProtocol):
             else:
                 return o(b'\x02' + (bytes([data_len]) if data_len < 126 else b'\x7e'+data_len.to_bytes(2, 'big') if data_len < 65536 else b'\x7f'+data_len.to_bytes(4, 'big')) + data)
         writer.write = write
-    async def parse(self, header, reader, writer, auth, authtable, sock, **kw):
-        lines = header + await reader.read_until(b'\r\n\r\n')
+    async def accept(self, reader, writer, auth, authtable, sock, **kw):
+        lines = await reader.read_until(b'\r\n\r\n')
         headers = lines[:-4].decode().split('\r\n')
         method, path, ver = HTTP_LINE.match(headers.pop(0)).groups()
         lines = '\r\n'.join(i for i in headers if not i.startswith('Proxy-'))
@@ -548,31 +577,27 @@ class Pack(BaseProtocol):
         writer.get_extra_info('socket').setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
         return Handler()
 
-async def parse(protos, reader, **kw):
-    proto = next(filter(lambda p: p.correct_header(None, **kw), protos), None)
-    if proto is None:
+async def accept(protos, reader, **kw):
+    for proto in protos:
         try:
-            header = await reader.read_n(1)
+            ok = await proto.guess(reader, **kw)
         except Exception:
             raise Exception('Connection closed')
-        proto = next(filter(lambda p: p.correct_header(header, **kw), protos), None)
-    else:
-        header = None
-    if proto is not None:
-        ret = await proto.parse(header=header, reader=reader, **kw)
-        while len(ret) < 4:
-            ret += (b'',)
-        return (proto,) + ret
-    raise Exception(f'Unsupported protocol {header}')
+        if ok:
+            ret = await proto.accept(reader, **kw)
+            while len(ret) < 4:
+                ret += (b'',)
+            return (proto,) + ret
+    raise Exception(f'Unsupported protocol')
 
-def udp_parse(protos, data, **kw):
+def udp_accept(protos, data, **kw):
     for proto in protos:
-        ret = proto.udp_parse(data, **kw)
+        ret = proto.udp_accept(data, **kw)
         if ret:
             return (proto,) + ret
     raise Exception(f'Unsupported protocol {data[:10]}')
 
-MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, ssh=SSH, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, pack=Pack, ws=WS, ssl='', secure='')
+MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, ssh=SSH, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, pack=Pack, ws=WS, trojan=Trojan, ssl='', secure='')
 MAPPINGS['in'] = ''
 
 def get_protos(rawprotos):
