@@ -280,13 +280,16 @@ class HTTP(BaseProtocol):
         url = urllib.parse.urlparse(path)
         if method == 'GET' and not url.hostname and httpget:
             for path, text in httpget.items():
-                if url.path == path:
-                    #authtable.set_authed()
-                    if type(text) is str:
-                        text = (text % dict(host=headers["Host"])).encode()
-                    writer.write(f'{ver} 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\nCache-Control: max-age=900\r\nContent-Length: {len(text)}\r\n\r\n'.encode() + text)
-                    await writer.drain()
-                    raise Exception('Connection closed')
+                if path == url.path:
+                    user = next(filter(lambda x: x.decode()==url.query, users), None) if users else True
+                    if user:
+                        if users:
+                            authtable.set_authed(user)
+                        if type(text) is str:
+                            text = (text % dict(host=headers["Host"])).encode()
+                        writer.write(f'{ver} 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\nCache-Control: max-age=900\r\nContent-Length: {len(text)}\r\n\r\n'.encode() + text)
+                        await writer.drain()
+                        raise Exception('Connection closed')
             raise Exception(f'404 {method} {url.path}')
         if users:
             pauth = headers.get('Proxy-Authorization', None)
