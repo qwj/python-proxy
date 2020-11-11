@@ -76,7 +76,9 @@ class Trojan(BaseProtocol):
                 return True
         reader.rollback(header)
     async def accept(self, reader, user, **kw):
-        assert await reader.read_n(3) == b'\x0d\x0a\x01'
+        assert await reader.read_n(2) == b'\x0d\x0a'
+        if (await reader.read_n(1))[0] != 1:
+            raise Exception('Connection closed')
         host_name, port, _ = await socks_address_stream(reader, (await reader.read_n(1))[0])
         assert await reader.read_n(2) == b'\x0d\x0a'
         return user, host_name, port
