@@ -635,7 +635,7 @@ def main():
             print('exit')
         if args.sys:
             args.sys.clear()
-    for task in asyncio.Task.all_tasks():
+    for task in asyncio.all_tasks(loop) if hasattr(asyncio, 'all_tasks') else asyncio.Task.all_tasks():
         task.cancel()
     for server in servers:
         server.close()
