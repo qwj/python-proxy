@@ -482,8 +482,12 @@ class ProxyURI(object):
                     cipher.plugins.append(plugin)
         match = cls.compile_rule(url.query) if url.query else None
         if loc:
-            host_name, _, port = loc.partition(':')
-            port = int(port) if port else (22 if 'ssh' in rawprotos else 8080)
+            if 'ssh' in rawprotos:
+                host_name = loc
+                port = None
+            else:
+                host_name, _, port = loc.partition(':')
+                port = int(port) if port else 8080
         else:
             host_name = port = None
         if url.fragment.startswith('#'):
