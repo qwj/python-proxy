@@ -1,5 +1,5 @@
 __title__       = "pproxy"
-__version__     = "2.4.6"
+__version__     = "2.4.7"
 __license__     = "MIT"
 __description__ = "Proxy server that can tunnel among remote servers by regex rules."
 __keywords__    = "proxy socks http shadowsocks shadowsocksr ssr redirect pf tunnel cipher ssl udp"

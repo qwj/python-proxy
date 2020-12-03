@@ -493,7 +493,11 @@ class ProxyURI(object):
                 host_name = loc
                 port = None
             else:
-                host_name, _, port = loc.partition(':')
+                ipv6 = re.fullmatch('\[([0-9a-fA-F:]*)\](?::(\d+)?)?', loc)
+                if ipv6:
+                    host_name, port = loc.groups()
+                else:
+                    host_name, _, port = loc.partition(':')
                 port = int(port) if port else 8080
         else:
             host_name = port = None
