@@ -358,13 +358,18 @@ class ProxyURI(object):
                         setattr(asyncssh.SSHReader, s, getattr(asyncio.StreamReader, s))
                 except Exception:
                     raise Exception('Missing library: "pip3 install asyncssh"')
-                username, password = self.auth.decode().split(':', 1)
-                if password.startswith(':'):
-                    client_keys = [password[1:]]
-                    password = None
-                else:
-                    client_keys = None
-                conn = await asyncssh.connect(host=self.host_name, port=self.port, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60)
+
+                conn = None
+                usersindex = 0
+                for jumphost in self.host_name.split(','):
+                    username, password = self.users[usersindex].decode().split(':', 1)
+                    usersindex += 1
+                    if password.startswith(':'):
+                        client_keys = [password[1:]]
+                        password = None
+                    else:
+                        client_keys = None
+                    conn = await asyncssh.connect(host=jumphost, port=self.port, tunnel=conn, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60)
                 if not self.streams.done():
                     self.streams.set_result((conn, None))
                 return conn, None
