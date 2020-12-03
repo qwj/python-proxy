@@ -358,13 +358,20 @@ class ProxyURI(object):
                         setattr(asyncssh.SSHReader, s, getattr(asyncio.StreamReader, s))
                 except Exception:
                     raise Exception('Missing library: "pip3 install asyncssh"')
-                username, password = self.auth.decode().split(':', 1)
-                if password.startswith(':'):
-                    client_keys = [password[1:]]
-                    password = None
-                else:
-                    client_keys = None
-                conn = await asyncssh.connect(host=self.host_name, port=self.port, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60)
+
+                conn = None
+                usersindex = 0
+                for jumphost in self.host_name.split(','):
+                    host_name, _, port = jumphost.partition(':')
+                    port = int(port) if port else None
+                    username, password = self.users[usersindex].decode().split(':', 1)
+                    usersindex += 1
+                    if password.startswith(':'):
+                        client_keys = [password[1:]]
+                        password = None
+                    else:
+                        client_keys = None
+                    conn = await asyncssh.connect(host=host_name, port=port, tunnel=conn, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60)
                 if not self.streams.done():
                     self.streams.set_result((conn, None))
                 return conn, None
@@ -482,12 +489,16 @@ class ProxyURI(object):
                     cipher.plugins.append(plugin)
         match = cls.compile_rule(url.query) if url.query else None
         if loc:
-            ipv6 = re.fullmatch('\[([0-9a-fA-F:]*)\](?::(\d+)?)?', loc)
-            if ipv6:
-                host_name, port = loc.groups()
+            if 'ssh' in rawprotos:
+                host_name = loc
+                port = None
             else:
-                host_name, _, port = loc.partition(':')
-            port = int(port) if port else (22 if 'ssh' in rawprotos else 8080)
+                ipv6 = re.fullmatch('\[([0-9a-fA-F:]*)\](?::(\d+)?)?', loc)
+                if ipv6:
+                    host_name, port = loc.groups()
+                else:
+                    host_name, _, port = loc.partition(':')
+                port = int(port) if port else 8080
         else:
             host_name = port = None
         if url.fragment.startswith('#'):
