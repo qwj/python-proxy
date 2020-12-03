@@ -362,6 +362,8 @@ class ProxyURI(object):
                 conn = None
                 usersindex = 0
                 for jumphost in self.host_name.split(','):
+                    host_name, _, port = jumphost.partition(':')
+                    port = int(port) if port else None
                     username, password = self.users[usersindex].decode().split(':', 1)
                     usersindex += 1
                     if password.startswith(':'):
@@ -369,7 +371,7 @@ class ProxyURI(object):
                         password = None
                     else:
                         client_keys = None
-                    conn = await asyncssh.connect(host=jumphost, port=self.port, tunnel=conn, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60)
+                    conn = await asyncssh.connect(host=host_name, port=port, tunnel=conn, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60)
                 if not self.streams.done():
                     self.streams.set_result((conn, None))
                 return conn, None
