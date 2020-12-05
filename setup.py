@@ -14,7 +14,7 @@ def find_value(name):
 
 setup(
     name                = find_value('title'),
-    version             = find_value('version'),
+    use_scm_version     = True,
     description         = find_value('description'),
     long_description    = read('README.rst'),
     url                 = find_value('url'),
