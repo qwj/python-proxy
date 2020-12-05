@@ -8,7 +8,7 @@ __url__         = "https://github.com/qwj/python-proxy"
 
 try:
     from setuptools_scm import get_version
-    __version__ = get_version()+'dev'
+    __version__ = get_version()
 except Exception:
     try:
         from importlib.metadata import version
