@@ -87,7 +87,8 @@ async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, s
                 writer.write(lbuf)
                 writer_remote.write(rbuf)
             except Exception:
-                writer_remote.close()
+                if writer_remote:
+                    writer_remote.close()
                 raise Exception('Unknown remote protocol')
             m = modstat(user, remote_ip, host_name)
             lchannel = lproto.http_channel if rbuf else lproto.channel
@@ -269,6 +270,7 @@ class ProxyURI(object):
         self.udpmap = {}
         self.handler = None
         self.streams = None
+        self.jumphost = []
         if self.backward:
             self.backward = BackwardConnection(self, self.backward)
     def logtext(self, host, port):
@@ -363,7 +365,7 @@ class ProxyURI(object):
                 usersindex = 0
                 for jumphost in self.host_name.split(','):
                     host_name, _, port = jumphost.partition(':')
-                    port = int(port) if port else None
+                    port = int(port) if port else 22
                     username, password = self.users[usersindex].decode().split(':', 1)
                     usersindex += 1
                     if password.startswith(':'):
@@ -372,6 +374,7 @@ class ProxyURI(object):
                     else:
                         client_keys = None
                     conn = await asyncssh.connect(host=host_name, port=port, tunnel=conn, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60)
+                    self.jumphost.append(conn)
                 if not self.streams.done():
                     self.streams.set_result((conn, None))
                 return conn, None
@@ -383,9 +386,11 @@ class ProxyURI(object):
                 wait = asyncio.open_connection(host=self.host_name, port=self.port, local_addr=local_addr, family=family)
             reader, writer = await asyncio.wait_for(wait, timeout=timeout)
         except Exception as ex:
-            if self.reuse:
+            if self.reuse or self.ssh:
                 self.streams.set_exception(ex)
                 self.streams = None
+                while self.jumphost:
+                    self.jumphost.pop().close()
             raise
         return reader, writer
     def prepare_connection(self, reader_remote, writer_remote, host, port):
@@ -405,7 +410,15 @@ class ProxyURI(object):
                     self.streams.set_result((reader_remote, writer_remote))
                 reader_remote, writer_remote = handler.connect(whost, wport)
             elif self.ssh:
-                reader_remote, writer_remote = await reader_remote.open_connection(whost, wport)
+                try:
+                    reader_remote, writer_remote = await reader_remote.open_connection(whost, wport)
+                except Exception as ex:
+                    if not self.streams.done():
+                        self.streams.set_exception(ex)
+                        self.streams = None
+                    while self.jumphost:
+                        self.jumphost.pop().close()
+                    raise
             else:
                 await self.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=self.auth, host_name=whost, port=wport, writer_cipher_r=writer_cipher_r, myhost=self.host_name, sock=writer_remote.get_extra_info('socket'))
             return await self.relay.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port, handler)
