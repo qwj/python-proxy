@@ -362,12 +362,8 @@ class ProxyURI(object):
                     raise Exception('Missing library: "pip3 install asyncssh"')
 
                 conn = None
-                usersindex = 0
-                for jumphost in self.host_name.split(','):
-                    host_name, _, port = jumphost.partition(':')
-                    port = int(port) if port else 22
-                    username, password = self.users[usersindex].decode().split(':', 1)
-                    usersindex += 1
+                for (host_name, port, user) in zip(self.host_name, self.port, self.users):
+                    username, password = user.decode().split(':', 1)
                     if password.startswith(':'):
                         client_keys = [password[1:]]
                         password = None
@@ -387,10 +383,10 @@ class ProxyURI(object):
             reader, writer = await asyncio.wait_for(wait, timeout=timeout)
         except Exception as ex:
             if self.reuse or self.ssh:
-                self.streams.set_exception(ex)
-                self.streams = None
                 while self.jumphost:
                     self.jumphost.pop().close()
+                self.streams.set_exception(ex)
+                self.streams = None
             raise
         return reader, writer
     def prepare_connection(self, reader_remote, writer_remote, host, port):
@@ -413,11 +409,11 @@ class ProxyURI(object):
                 try:
                     reader_remote, writer_remote = await reader_remote.open_connection(whost, wport)
                 except Exception as ex:
-                    if not self.streams.done():
-                        self.streams.set_exception(ex)
-                        self.streams = None
                     while self.jumphost:
                         self.jumphost.pop().close()
+                    if not self.streams.done():
+                        self.streams.set_exception(ex)
+                    self.streams = None
                     raise
             else:
                 await self.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=self.auth, host_name=whost, port=wport, writer_cipher_r=writer_cipher_r, myhost=self.host_name, sock=writer_remote.get_extra_info('socket'))
@@ -502,16 +498,20 @@ class ProxyURI(object):
                     cipher.plugins.append(plugin)
         match = cls.compile_rule(url.query) if url.query else None
         if loc:
-            if 'ssh' in rawprotos:
-                host_name = loc
-                port = None
-            else:
-                ipv6 = re.fullmatch('\[([0-9a-fA-F:]*)\](?::(\d+)?)?', loc)
+            host_names = []
+            ports = []
+            for _loc in loc.split(','):
+                ipv6 = re.fullmatch('\[([0-9a-fA-F:]*)\](?::(\d+)?)?', _loc)
                 if ipv6:
-                    host_name, port = loc.groups()
+                    host_name, port = ipv6.groups()
                 else:
-                    host_name, _, port = loc.partition(':')
-                port = int(port) if port else 8080
+                    host_name, _, port = _loc.partition(':')
+                port = int(port) if port else (22 if 'ssh' in rawprotos else 8080)
+                host_names.append(host_name)
+                ports.append(port)
+            if 'ssh' in rawprotos:
+                host_name = host_names
+                port = ports
         else:
             host_name = port = None
         if url.fragment.startswith('#'):
