@@ -398,7 +398,17 @@ class ProxyURI(object):
                     self.streams.set_result((reader_remote, writer_remote))
                 reader_remote, writer_remote = handler.connect(whost, wport)
             elif self.ssh:
-                reader_remote, writer_remote = await reader_remote.open_connection(whost, wport)
+                if self.relay.ssh:
+                    import asyncssh
+                    username, password = self.relay.auth.decode().split(':', 1)
+                    if password.startswith(':'):
+                        client_keys = [password[1:]]
+                        password = None
+                    else:
+                        client_keys = None
+                    reader_remote, writer_remote = await asyncssh.connect(tunnel=reader_remote, host=self.host_name, port=self.port, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60), None
+                else:
+                    reader_remote, writer_remote = await reader_remote.open_connection(whost, wport)
             else:
                 await self.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=self.auth, host_name=whost, port=wport, writer_cipher_r=writer_cipher_r, myhost=self.host_name, sock=writer_remote.get_extra_info('socket'))
             return await self.relay.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port, handler)
