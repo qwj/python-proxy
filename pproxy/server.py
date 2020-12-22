@@ -335,8 +335,31 @@ class ProxyURI(object):
             def datagram_received(prot, data, addr):
                 asyncio.ensure_future(datagram_handler(prot.transport, data, addr, **vars(self), **args))
         return asyncio.get_event_loop().create_datagram_endpoint(Protocol, local_addr=(self.host_name, self.port))
+    async def make_ssh_connect(self, **kwargs):
+        if self.streams is None:
+            self.streams = asyncio.get_event_loop().create_future()
+        else:
+            if not self.streams.done():
+                await self.streams
+            return self.streams.result()
+        try:
+            import asyncssh
+            for s in ('read_', 'read_n', 'read_until'):
+                setattr(asyncssh.SSHReader, s, getattr(asyncio.StreamReader, s))
+        except Exception:
+            raise Exception('Missing library: "pip3 install asyncssh"')
+        username, password = self.auth.decode().split(':', 1)
+        if password.startswith(':'):
+            client_keys = [password[1:]]
+            password = None
+        else:
+            client_keys = None
+        conn = await asyncssh.connect(host=self.host_name, port=self.port, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60, **kwargs)
+        if not self.streams.done():
+            self.streams.set_result((conn, None))
+        return conn, None
     async def open_connection(self, host, port, local_addr, lbind, timeout=SOCKET_TIMEOUT):
-        if self.reuse or self.ssh:
+        if self.reuse:
             if self.streams is None or self.streams.done() and (self.reuse and not self.handler):
                 self.streams = asyncio.get_event_loop().create_future()
             else:
@@ -352,22 +375,7 @@ class ProxyURI(object):
                     raise Exception('Unknown tunnel endpoint')
                 wait = asyncio.open_connection(host=host, port=port, local_addr=local_addr, family=family)
             elif self.ssh:
-                try:
-                    import asyncssh
-                    for s in ('read_', 'read_n', 'read_until'):
-                        setattr(asyncssh.SSHReader, s, getattr(asyncio.StreamReader, s))
-                except Exception:
-                    raise Exception('Missing library: "pip3 install asyncssh"')
-                username, password = self.auth.decode().split(':', 1)
-                if password.startswith(':'):
-                    client_keys = [password[1:]]
-                    password = None
-                else:
-                    client_keys = None
-                conn = await asyncssh.connect(host=self.host_name, port=self.port, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60)
-                if not self.streams.done():
-                    self.streams.set_result((conn, None))
-                return conn, None
+                wait = self.make_ssh_connect(local_addr=local_addr, family=family)
             elif self.backward:
                 wait = self.backward.open_connection()
             elif self.unix:
@@ -399,14 +407,7 @@ class ProxyURI(object):
                 reader_remote, writer_remote = handler.connect(whost, wport)
             elif self.ssh:
                 if self.relay.ssh:
-                    import asyncssh
-                    username, password = self.relay.auth.decode().split(':', 1)
-                    if password.startswith(':'):
-                        client_keys = [password[1:]]
-                        password = None
-                    else:
-                        client_keys = None
-                    reader_remote, writer_remote = await asyncssh.connect(tunnel=reader_remote, host=self.host_name, port=self.port, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60), None
+                    reader_remote, writer_remote = await self.relay.make_ssh_connect(tunnel=reader_remote)
                 else:
                     reader_remote, writer_remote = await reader_remote.open_connection(whost, wport)
             else:
