@@ -493,12 +493,7 @@ class ProxyURI(object):
                     cipher.plugins.append(plugin)
         match = cls.compile_rule(url.query) if url.query else None
         if loc:
-            ipv6 = re.fullmatch('\[([0-9a-fA-F:]*)\](?::(\d+)?)?', loc)
-            if ipv6:
-                host_name, port = loc.groups()
-            else:
-                host_name, _, port = loc.partition(':')
-            port = int(port) if port else (22 if 'ssh' in rawprotos else 8080)
+            host_name, port = proto.netloc_split(loc, 22 if 'ssh' in rawprotos else 8080)
         else:
             host_name = port = None
         if url.fragment.startswith('#'):

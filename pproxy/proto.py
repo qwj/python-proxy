@@ -3,6 +3,14 @@ import asyncio, socket, urllib.parse, time, re, base64, hmac, struct, hashlib, i
 HTTP_LINE = re.compile('([^ ]+) +(.+?) +(HTTP/[^ ]+)$')
 packstr = lambda s, n=1: len(s).to_bytes(n, 'big') + s
 
+def netloc_split(loc, default_port)
+    ipv6 = re.fullmatch('\[([0-9a-fA-F:]*)\](?::(\d+)?)?', loc)
+    if ipv6:
+        host_name, port = ipv6.groups()
+    else:
+        host_name, port = loc.partition(':')
+    return host_name, int(port) if port else default_port
+
 async def socks_address_stream(reader, n):
     if n in (1, 17):
         data = await reader.read_n(4)
@@ -308,13 +316,7 @@ class HTTP(BaseProtocol):
             return user, host_name, port, f'{ver} 200 OK\r\nConnection: close\r\n\r\n'.encode()
         else:
             url = urllib.parse.urlparse(path)
-            if ':' in url.netloc:
-                host_name, port = url.netloc.rsplit(':', 1)
-                host_name = headers.get("Host", host_name)
-                port = int(port)
-            else:
-                host_name, port = url.netloc, 80
-                host_name = headers.get("Host", host_name)
+            host_name, port = netloc_split(url.netloc or headers.get("Host"), 80)
             newpath = url._replace(netloc='', scheme='').geturl()
             return user, host_name, port, b'', f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode()
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
