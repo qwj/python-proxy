@@ -493,7 +493,7 @@ class ProxyURI(object):
                     cipher.plugins.append(plugin)
         match = cls.compile_rule(url.query) if url.query else None
         if loc:
-            host_name, port = proto.netloc_split(loc, 22 if 'ssh' in rawprotos else 8080)
+            host_name, port = proto.netloc_split(loc, default_port=22 if 'ssh' in rawprotos else 8080)
         else:
             host_name = port = None
         if url.fragment.startswith('#'):
@@ -514,8 +514,7 @@ ProxyURI.DIRECT = ProxyURI(direct=True, tunnel=False, reuse=False, relay=None, a
 async def test_url(url, rserver):
     url = urllib.parse.urlparse(url)
     assert url.scheme in ('http', 'https'), f'Unknown scheme {url.scheme}'
-    host_name, _, port = url.netloc.partition(':')
-    port = int(port) if port else 80 if url.scheme == 'http' else 443
+    host_name, port = proto.netloc_split(url.netloc, default_port = 80 if url.scheme=='http' else 443)
     initbuf = f'GET {url.path or "/"} HTTP/1.1\r\nHost: {host_name}\r\nUser-Agent: pproxy-{__version__}\r\nAccept: */*\r\nConnection: close\r\n\r\n'.encode()
     for roption in rserver:
         print(f'============ {roption.bind} ============')

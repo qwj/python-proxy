@@ -3,13 +3,15 @@ import asyncio, socket, urllib.parse, time, re, base64, hmac, struct, hashlib, i
 HTTP_LINE = re.compile('([^ ]+) +(.+?) +(HTTP/[^ ]+)$')
 packstr = lambda s, n=1: len(s).to_bytes(n, 'big') + s
 
-def netloc_split(loc, default_port):
+def netloc_split(loc, default_host=None, default_port=None):
     ipv6 = re.fullmatch('\[([0-9a-fA-F:]*)\](?::(\d+)?)?', loc)
     if ipv6:
         host_name, port = ipv6.groups()
+    elif ':' in loc:
+        host_name, port = loc.rsplit(':', 1)
     else:
-        host_name, _, port = loc.partition(':')
-    return host_name, int(port) if port else default_port
+        host_name, port = loc, None
+    return host_name or default_host, int(port) if port else default_port
 
 async def socks_address_stream(reader, n):
     if n in (1, 17):
@@ -311,12 +313,11 @@ class HTTP(BaseProtocol):
                     raise Exception('Unauthorized HTTP')
             authtable.set_authed(user)
         if method == 'CONNECT':
-            host_name, port = path.rsplit(':', 1)
-            port = int(port)
+            host_name, port = netloc_split(path)
             return user, host_name, port, f'{ver} 200 OK\r\nConnection: close\r\n\r\n'.encode()
         else:
             url = urllib.parse.urlparse(path)
-            host_name, port = netloc_split(url.netloc or headers.get("Host"), 80)
+            host_name, port = netloc_split(url.netloc or headers.get("Host"), default_port=80)
             newpath = url._replace(netloc='', scheme='').geturl()
             return user, host_name, port, b'', f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode()
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
@@ -421,11 +422,8 @@ class Tunnel(Transparent):
     def query_remote(self, sock):
         if not self.param:
             return 'tunnel', 0
-        host, _, port = self.param.partition(':')
         dst = sock.getsockname()
-        host = host or dst[0]
-        port = int(port) if port else dst[1]
-        return host, port
+        return netloc_split(self.param, dst[0], dst[1])
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
         pass
     def udp_connect(self, rauth, host_name, port, data, **kw):
@@ -502,10 +500,8 @@ class WS(BaseProtocol):
         self.patch_ws_stream(reader, writer, False)
         if not self.param:
             return 'tunnel', 0
-        host, _, port = self.param.partition(':')
         dst = sock.getsockname()
-        host = host or dst[0]
-        port = int(port) if port else dst[1]
+        host, port = netloc_split(self.param, dst[0], dst[1])
         return user, host, port
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
         seckey = base64.b64encode(os.urandom(16)).decode()
