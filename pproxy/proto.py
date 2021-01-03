@@ -310,9 +310,11 @@ class HTTP(BaseProtocol):
             url = urllib.parse.urlparse(path)
             if ':' in url.netloc:
                 host_name, port = url.netloc.rsplit(':', 1)
+                host_name = headers.get("Host", host_name)
                 port = int(port)
             else:
                 host_name, port = url.netloc, 80
+                host_name = headers.get("Host", host_name)
             newpath = url._replace(netloc='', scheme='').geturl()
             return user, host_name, port, b'', f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode()
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
