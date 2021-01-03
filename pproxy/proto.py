@@ -3,7 +3,7 @@ import asyncio, socket, urllib.parse, time, re, base64, hmac, struct, hashlib, i
 HTTP_LINE = re.compile('([^ ]+) +(.+?) +(HTTP/[^ ]+)$')
 packstr = lambda s, n=1: len(s).to_bytes(n, 'big') + s
 
-def netloc_split(loc, default_port)
+def netloc_split(loc, default_port):
     ipv6 = re.fullmatch('\[([0-9a-fA-F:]*)\](?::(\d+)?)?', loc)
     if ipv6:
         host_name, port = ipv6.groups()
