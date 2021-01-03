@@ -8,7 +8,7 @@ def netloc_split(loc, default_port):
     if ipv6:
         host_name, port = ipv6.groups()
     else:
-        host_name, port = loc.partition(':')
+        host_name, _, port = loc.partition(':')
     return host_name, int(port) if port else default_port
 
 async def socks_address_stream(reader, n):
