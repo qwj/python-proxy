@@ -685,10 +685,23 @@ Examples
 
   If trojan password doesn't match, the tunnal{localhost:80} will be switched to. It looks exactly the same as a common HTTPS website.
 
+- VPN Server Example
+
+  You can run VPN server simply by installing pvpn (python vpn), a lightweight VPN server with pproxy tunnel feature.
+
+  .. code:: rst
+
+    $ pip3 install pvpn
+    Successfully installed pvpn-0.2.1
+    $ pvpn -wg 9999 -r http://remote_server:remote_port
+    Serving on UDP :500 :4500...
+    Serving on UDP :9000 (WIREGUARD)...
+    TCP xx.xx.xx.xx:xx -> HTTP xx.xx.xx.xx:xx -> xx.xx.xx.xx:xx
+
 
 Projects
 --------
 
-+ `python-esp <https://github.com/qwj/python-esp>`_ - Pure python VPN (IPSec,IKE,IKEv2,L2TP)
-+ `shadowproxy <https://github.com/guyingbo/shadowproxy>`_ - Another awesome proxy implementation by guyingbo
++ `python-vpn <https://github.com/qwj/python-vpn>`_ - VPN Server (IPSec,IKE,IKEv2,L2TP,WireGuard) in pure python
++ `shadowproxy <https://github.com/guyingbo/shadowproxy>`_ - Awesome python proxy implementation by guyingbo
 
