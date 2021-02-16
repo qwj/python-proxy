@@ -325,14 +325,24 @@ class ProxyQUIC(ProxySimple):
         if self.handshake is not None:
             if not self.handshake.done():
                 await self.handshake
-            reader, writer = await self.handshake.result().create_stream()
         else:
             self.handshake = asyncio.get_event_loop().create_future()
-            import aioquic.asyncio
-            self.quic_egress_acm = aioquic.asyncio.connect(self.host_name, self.port, configuration=self.quicclient)
+            import aioquic.asyncio, aioquic.quic.events
+            class Protocol(aioquic.asyncio.QuicConnectionProtocol):
+                def quic_event_received(s, event):
+                    if isinstance(event, aioquic.quic.events.HandshakeCompleted):
+                        self.handshake.set_result(s)
+                    elif isinstance(event, aioquic.quic.events.ConnectionTerminated):
+                        self.handshake = None
+                        self.quic_egress_acm = None
+                    super().quic_event_received(event)
+            self.quic_egress_acm = aioquic.asyncio.connect(self.host_name, self.port, create_protocol=Protocol, configuration=self.quicclient)
             conn = await self.quic_egress_acm.__aenter__()
-            self.handshake.set_result(conn)
-            reader, writer = await conn.create_stream()
+            await self.handshake
+        conn = self.handshake.result()
+        stream_id = conn._quic.get_next_available_stream_id(False)
+        conn._quic._get_or_create_stream_for_send(stream_id)
+        reader, writer = conn._create_stream(stream_id)
         self.patch_writer(writer)
         return reader, writer
     async def start_server(self, args):
