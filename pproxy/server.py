@@ -3,11 +3,9 @@ from . import proto
 from .__doc__ import *
 
 SOCKET_TIMEOUT = 300
-PACKET_SIZE = 65536
 UDP_LIMIT = 30
 DUMMY = lambda s: s
 
-asyncio.StreamReader.read_ = lambda self: self.read(PACKET_SIZE)
 asyncio.StreamReader.read_w = lambda self, n: asyncio.wait_for(self.read(n), timeout=SOCKET_TIMEOUT)
 asyncio.StreamReader.read_n = lambda self, n: asyncio.wait_for(self.readexactly(n), timeout=SOCKET_TIMEOUT)
 asyncio.StreamReader.read_until = lambda self, s: asyncio.wait_for(self.readuntil(s), timeout=SOCKET_TIMEOUT)
@@ -40,7 +38,7 @@ async def prepare_ciphers(cipher, reader, writer, bind=None, server_side=True):
         return None, None
 
 def schedule(rserver, salgorithm, host_name, port):
-    filter_cond = lambda o: o.alive and (not o.match or o.match(host_name) or o.match(str(port)))
+    filter_cond = lambda o: o.alive and o.match_rule(host_name, port)
     if salgorithm == 'fa':
         return next(filter(filter_cond, rserver), None)
     elif salgorithm == 'rr':
@@ -52,7 +50,7 @@ def schedule(rserver, salgorithm, host_name, port):
         filters = [i for i in rserver if filter_cond(i)]
         return random.choice(filters) if filters else None
     elif salgorithm == 'lc':
-        return min(filter(filter_cond, rserver), default=None, key=lambda i: i.total)
+        return min(filter(filter_cond, rserver), default=None, key=lambda i: i.connections)
     else:
         raise Exception('Unknown scheduling algorithm') #Unreachable
 
@@ -76,7 +74,7 @@ async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, s
         elif block and block(host_name):
             raise Exception('BLOCK ' + host_name)
         else:
-            roption = schedule(rserver, salgorithm, host_name, port) or ProxyURI.DIRECT
+            roption = schedule(rserver, salgorithm, host_name, port) or DIRECT
             verbose(f'{lproto.name} {remote_text}{roption.logtext(host_name, port)}')
             try:
                 reader_remote, writer_remote = await roption.open_connection(host_name, port, local_addr, lbind)
@@ -101,55 +99,6 @@ async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, s
         if debug:
             raise
 
-async def reuse_stream_handler(reader, writer, unix, lbind, protos, rserver, urserver, block, cipher, salgorithm, verbose=DUMMY, modstat=lambda u,r,h:lambda i:DUMMY, **kwargs):
-    try:
-        if unix:
-            remote_ip, server_ip, remote_text = 'local', None, 'unix_local'
-        else:
-            remote_ip, remote_port, *_ = writer.get_extra_info('peername')
-            server_ip = writer.get_extra_info('sockname')[0]
-            remote_text = f'{remote_ip}:{remote_port}'
-        local_addr = None if server_ip in ('127.0.0.1', '::1', None) else (server_ip, 0)
-        reader_cipher, _ = await prepare_ciphers(cipher, reader, writer, server_side=False)
-        lproto = protos[0]
-    except Exception as ex:
-        verbose(f'{str(ex) or "Unsupported protocol"} from {remote_ip}')
-    async def tcp_handler(reader, writer, host_name, port):
-        try:
-            if block and block(host_name):
-                raise Exception('BLOCK ' + host_name)
-            roption = schedule(rserver, salgorithm, host_name, port) or ProxyURI.DIRECT
-            verbose(f'{lproto.name} {remote_text}{roption.logtext(host_name, port)}')
-            try:
-                reader_remote, writer_remote = await roption.open_connection(host_name, port, local_addr, lbind)
-            except asyncio.TimeoutError:
-                raise Exception(f'Connection timeout {roption.bind}')
-            try:
-                reader_remote, writer_remote = await roption.prepare_connection(reader_remote, writer_remote, host_name, port)
-            except Exception:
-                writer_remote.close()
-                raise Exception('Unknown remote protocol')
-            m = modstat(True, remote_ip, host_name)
-            asyncio.ensure_future(lproto.channel(reader_remote, writer, m(2+roption.direct), m(4+roption.direct)))
-            asyncio.ensure_future(lproto.channel(reader, writer_remote, m(roption.direct), roption.connection_change))
-        except Exception as ex:
-            if not isinstance(ex, asyncio.TimeoutError) and not str(ex).startswith('Connection closed'):
-                verbose(f'{str(ex) or "Unsupported protocol"} from {remote_ip}')
-            try: writer.close()
-            except Exception: pass
-    async def udp_handler(sendto, data, host_name, port, sid):
-        try:
-            if block and block(host_name):
-                raise Exception('BLOCK ' + host_name)
-            roption = schedule(urserver, salgorithm, host_name, port) or ProxyURI.DIRECT
-            verbose(f'UDP {lproto.name} {remote_text}{roption.logtext(host_name, port)}')
-            data = roption.prepare_udp_connection(host_name, port, data)
-            await roption.open_udp_connection(host_name, port, data, sid, sendto)
-        except Exception as ex:
-            if not str(ex).startswith('Connection closed'):
-                verbose(f'{str(ex) or "Unsupported protocol"} from {remote_ip}')
-    lproto.get_handler(reader, writer, verbose, tcp_handler, udp_handler)
-
 async def datagram_handler(writer, data, addr, protos, urserver, block, cipher, salgorithm, verbose=DUMMY, **kwargs):
     try:
         remote_ip, remote_port, *_ = addr
@@ -163,13 +112,13 @@ async def datagram_handler(writer, data, addr, protos, urserver, block, cipher, 
         elif block and block(host_name):
             raise Exception('BLOCK ' + host_name)
         else:
-            roption = schedule(urserver, salgorithm, host_name, port) or ProxyURI.DIRECT
+            roption = schedule(urserver, salgorithm, host_name, port) or DIRECT
             verbose(f'UDP {lproto.name} {remote_text}{roption.logtext(host_name, port)}')
-            data = roption.prepare_udp_connection(host_name, port, data)
+            data = roption.udp_prepare_connection(host_name, port, data)
             def reply(rdata):
                 rdata = lproto.udp_pack(host_name, port, rdata)
                 writer.sendto(cipher.datagram.encrypt(rdata) if cipher else rdata, addr)
-            await roption.open_udp_connection(host_name, port, data, addr, reply)
+            await roption.udp_open_connection(host_name, port, data, addr, reply)
     except Exception as ex:
         if not str(ex).startswith('Connection closed'):
             verbose(f'{str(ex) or "Unsupported protocol"} from {remote_ip}')
@@ -178,7 +127,7 @@ async def check_server_alive(interval, rserver, verbose):
     while True:
         await asyncio.sleep(interval)
         for remote in rserver:
-            if remote.direct:
+            if isinstance(remote, ProxyDirect):
                 continue
             try:
                 _, writer = await remote.open_connection(None, None, None, None, timeout=3)
@@ -193,94 +142,34 @@ async def check_server_alive(interval, rserver, verbose):
                 verbose(f'{remote.rproto.name} {remote.bind} -> ONLINE')
                 remote.alive = True
             try:
-                if remote.backward:
+                if isinstance(remote, ProxyBackward):
                     writer.write(b'\x00')
                 writer.close()
             except Exception:
                 pass
 
-class BackwardConnection(object):
-    def __init__(self, uri, count):
-        self.uri = uri
-        self.count = count
-        self.closed = False
-        self.conn = asyncio.Queue()
-    async def open_connection(self):
-        while True:
-            reader, writer = await self.conn.get()
-            if not writer.transport.is_closing():
-                return reader, writer
-    def close(self):
-        self.closed = True
-        try:
-            self.writer.close()
-        except Exception:
-            pass
-    async def start_server(self, handler):
-        for _ in range(self.count):
-            asyncio.ensure_future(self.server_run(handler))
-        return self
-    async def server_run(self, handler):
-        errwait = 0
-        while not self.closed:
-            if self.uri.unix:
-                wait = asyncio.open_unix_connection(path=self.uri.bind)
-            else:
-                wait = asyncio.open_connection(host=self.uri.host_name, port=self.uri.port, local_addr=(self.uri.lbind, 0) if self.uri.lbind else None)
-            try:
-                reader, writer = await asyncio.wait_for(wait, timeout=SOCKET_TIMEOUT)
-                writer.write(self.uri.auth)
-                self.writer = writer
-                try:
-                    data = await reader.read_n(1)
-                except asyncio.TimeoutError:
-                    data = None
-                if data and data[0] != 0:
-                    reader.rollback(data)
-                    asyncio.ensure_future(handler(reader, writer))
-                else:
-                    writer.close()
-                errwait = 0
-            except Exception as ex:
-                try:
-                    writer.close()
-                except Exception:
-                    pass
-                if not self.closed:
-                    await asyncio.sleep(errwait)
-                    errwait = min(errwait*1.3 + 0.1, 30)
-    def client_run(self, args):
-        async def handler(reader, writer):
-            if self.uri.auth:
-                try:
-                    assert self.uri.auth == (await reader.read_n(len(self.uri.auth)))
-                except Exception:
-                    return
-            await self.conn.put((reader, writer))
-        if self.uri.unix:
-            return asyncio.start_unix_server(handler, path=self.uri.bind)
-        else:
-            return asyncio.start_server(handler, host=self.uri.host_name, port=self.uri.port, reuse_port=args.get('ruport'))
-
-class ProxyURI(object):
-    def __init__(self, **kw):
-        self.__dict__.update(kw)
-        self.total = 0
+class ProxyDirect(object):
+    def __init__(self, lbind=None):
+        self.bind = 'DIRECT'
+        self.lbind = lbind
+        self.unix = False
+        self.alive = True
+        self.connections = 0
         self.udpmap = {}
-        self.handler = None
-        self.streams = None
-        if self.backward:
-            self.backward = BackwardConnection(self, self.backward)
+    @property
+    def direct(self):
+        return isinstance(self, ProxyDirect)
     def logtext(self, host, port):
-        if self.direct:
-            return f' -> {host}:{port}'
-        elif self.tunnel:
-            return f' ->{(" ssl" if self.sslclient else "")} {self.bind}'
-        else:
-            return f' -> {self.rproto.name+("+ssl" if self.sslclient else "")} {self.bind}' + self.relay.logtext(host, port)
+        return '' if host == 'tunnel' else f' -> {host}:{port}'
+    def match_rule(self, host, port):
+        return True
     def connection_change(self, delta):
-        self.total += delta
-    async def open_udp_connection(self, host, port, data, addr, reply):
+        self.connections += delta
+    def udp_packet_unpack(self, data):
+        return data
+    def destination(self, host, port):
+        return host, port
+    async def udp_open_connection(self, host, port, data, addr, reply):
         class Protocol(asyncio.DatagramProtocol):
             def __init__(prot, data):
                 self.udpmap[addr] = prot
@@ -300,8 +189,7 @@ class ProxyURI(object):
                     prot.databuf.append(data)
                 prot.update = time.perf_counter()
             def datagram_received(prot, data, addr):
-                data = self.cipher.datagram.decrypt(data) if self.cipher else data
-                data = self.rproto.udp_unpack(data) if not self.direct else data
+                data = self.udp_packet_unpack(data)
                 reply(data)
                 prot.update = time.perf_counter()
             def connection_lost(prot, exc):
@@ -309,119 +197,33 @@ class ProxyURI(object):
         if addr in self.udpmap:
             self.udpmap[addr].new_data_arrived(data)
         else:
-            if self.direct and host == 'tunnel':
-                raise Exception('Unknown tunnel endpoint')
             self.connection_change(1)
             if len(self.udpmap) > UDP_LIMIT:
                 min_addr = min(self.udpmap, key=lambda x: self.udpmap[x].update)
                 prot = self.udpmap.pop(min_addr)
                 if prot.transport:
                     prot.transport.close()
-            prot = Protocol(data)
-            remote_addr = (host, port) if self.direct else (self.host_name, self.port)
-            await asyncio.get_event_loop().create_datagram_endpoint(lambda: prot, remote_addr=remote_addr)
-    def prepare_udp_connection(self, host, port, data):
-        if not self.direct:
-            data = self.relay.prepare_udp_connection(host, port, data)
-            whost, wport = (host, port) if self.relay.direct else (self.relay.host_name, self.relay.port)
-            data = self.rproto.udp_connect(rauth=self.auth, host_name=whost, port=wport, data=data)
-            if self.cipher:
-                data = self.cipher.datagram.encrypt(data)
+            prot = lambda: Protocol(data)
+            remote = self.destination(host, port)
+            await asyncio.get_event_loop().create_datagram_endpoint(prot, remote_addr=remote)
+    def udp_prepare_connection(self, host, port, data):
         return data
-    def start_udp_server(self, args):
-        class Protocol(asyncio.DatagramProtocol):
-            def connection_made(prot, transport):
-                prot.transport = transport
-            def datagram_received(prot, data, addr):
-                asyncio.ensure_future(datagram_handler(prot.transport, data, addr, **vars(self), **args))
-        return asyncio.get_event_loop().create_datagram_endpoint(Protocol, local_addr=(self.host_name, self.port))
-    async def make_ssh_connect(self, **kwargs):
-        if self.streams is None:
-            self.streams = asyncio.get_event_loop().create_future()
-        else:
-            if not self.streams.done():
-                await self.streams
-            return self.streams.result()
-        try:
-            import asyncssh
-            for s in ('read_', 'read_n', 'read_until'):
-                setattr(asyncssh.SSHReader, s, getattr(asyncio.StreamReader, s))
-        except Exception:
-            raise Exception('Missing library: "pip3 install asyncssh"')
-        username, password = self.auth.decode().split(':', 1)
-        if password.startswith(':'):
-            client_keys = [password[1:]]
-            password = None
-        else:
-            client_keys = None
-        conn = await asyncssh.connect(host=self.host_name, port=self.port, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60, **kwargs)
-        if not self.streams.done():
-            self.streams.set_result((conn, None))
-        return conn, None
+    def wait_open_connection(self, host, port, local_addr, family):
+        return asyncio.open_connection(host=host, port=port, local_addr=local_addr, family=family)
     async def open_connection(self, host, port, local_addr, lbind, timeout=SOCKET_TIMEOUT):
-        if self.reuse:
-            if self.streams is None or self.streams.done() and (self.reuse and not self.handler):
-                self.streams = asyncio.get_event_loop().create_future()
-            else:
-                if not self.streams.done():
-                    await self.streams
-                return self.streams.result()
         try:
             local_addr = local_addr if self.lbind == 'in' else (self.lbind, 0) if self.lbind else \
                          local_addr if lbind == 'in' else (lbind, 0) if lbind else None
             family = 0 if local_addr is None else socket.AF_INET6 if ':' in local_addr[0] else socket.AF_INET
-            if self.direct:
-                if host == 'tunnel':
-                    raise Exception('Unknown tunnel endpoint')
-                wait = asyncio.open_connection(host=host, port=port, local_addr=local_addr, family=family)
-            elif self.ssh:
-                wait = self.make_ssh_connect(local_addr=local_addr, family=family)
-            elif self.backward:
-                wait = self.backward.open_connection()
-            elif self.unix:
-                wait = asyncio.open_unix_connection(path=self.bind)
-            else:
-                wait = asyncio.open_connection(host=self.host_name, port=self.port, local_addr=local_addr, family=family)
+            wait = self.wait_open_connection(host, port, local_addr, family)
             reader, writer = await asyncio.wait_for(wait, timeout=timeout)
         except Exception as ex:
-            if self.reuse:
-                self.streams.set_exception(ex)
-                self.streams = None
             raise
         return reader, writer
     def prepare_connection(self, reader_remote, writer_remote, host, port):
-        if self.reuse and not self.handler:
-            self.handler = self.rproto.get_handler(reader_remote, writer_remote, DUMMY)
-        return self.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port, self.handler)
-    async def prepare_ciphers_and_headers(self, reader_remote, writer_remote, host, port, handler):
-        if not self.direct:
-            reader_remote, writer_remote = proto.sslwrap(reader_remote, writer_remote, self.sslclient, False, self.host_name)
-            if not handler or not handler.ready:
-                _, writer_cipher_r = await prepare_ciphers(self.cipher, reader_remote, writer_remote, self.bind)
-            else:
-                writer_cipher_r = None
-            whost, wport = (host, port) if self.relay.direct else (self.relay.host_name, self.relay.port)
-            if self.rproto.reuse():
-                if not self.streams.done():
-                    self.streams.set_result((reader_remote, writer_remote))
-                reader_remote, writer_remote = handler.connect(whost, wport)
-            elif self.ssh:
-                if self.relay.ssh:
-                    reader_remote, writer_remote = await self.relay.make_ssh_connect(tunnel=reader_remote)
-                else:
-                    reader_remote, writer_remote = await reader_remote.open_connection(whost, wport)
-            else:
-                await self.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=self.auth, host_name=whost, port=wport, writer_cipher_r=writer_cipher_r, myhost=self.host_name, sock=writer_remote.get_extra_info('socket'))
-            return await self.relay.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port, handler)
+        return self.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port)
+    async def prepare_ciphers_and_headers(self, reader_remote, writer_remote, host, port):
         return reader_remote, writer_remote
-    def start_server(self, args):
-        handler = functools.partial(reuse_stream_handler if self.reuse else stream_handler, **vars(self), **args)
-        if self.backward:
-            return self.backward.start_server(handler)
-        elif self.unix:
-            return asyncio.start_unix_server(handler, path=self.bind)
-        else:
-            return asyncio.start_server(handler, host=self.host_name, port=self.port, reuse_port=args.get('ruport'))
     async def tcp_connect(self, host, port, local_addr=None, lbind=None):
         reader, writer = await self.open_connection(host, port, local_addr, lbind)
         try:
@@ -433,83 +235,316 @@ class ProxyURI(object):
     async def udp_sendto(self, host, port, data, answer_cb, local_addr=None):
         if local_addr is None:
             local_addr = random.randrange(2**32)
-        data = self.prepare_udp_connection(host, port, data)
-        await self.open_udp_connection(host, port, data, local_addr, answer_cb)
-    @classmethod
-    def compile_rule(cls, filename):
-        if filename.startswith("{") and filename.endswith("}"):
-            return re.compile(filename[1:-1]).match
-        with open(filename) as f:
-            return re.compile('(:?'+''.join('|'.join(i.strip() for i in f if i.strip() and not i.startswith('#')))+')$').match
-    @classmethod
-    def compile_relay(cls, uri):
-        tail = cls.DIRECT
-        for urip in reversed(uri.split('__')):
-            tail = cls.compile(urip, tail)
-        return tail
-    @classmethod
-    def compile(cls, uri, relay=None):
-        scheme, _, uri = uri.partition('://')
-        url = urllib.parse.urlparse('s://'+uri)
-        rawprotos = scheme.split('+')
-        err_str, protos = proto.get_protos(rawprotos)
-        if err_str:
-            raise argparse.ArgumentTypeError(err_str)
-        if 'ssl' in rawprotos or 'secure' in rawprotos:
-            import ssl
-            sslserver = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-            sslclient = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-            if 'ssl' in rawprotos:
-                sslclient.check_hostname = False
-                sslclient.verify_mode = ssl.CERT_NONE
+        data = self.udp_prepare_connection(host, port, data)
+        await self.udp_open_connection(host, port, data, local_addr, answer_cb)
+DIRECT = ProxyDirect()
+
+class ProxySimple(ProxyDirect):
+    def __init__(self, protos, cipher, users, rule, bind,
+                  host_name, port, unix, lbind, sslclient, sslserver):
+        super().__init__(lbind)
+        self.protos = protos
+        self.cipher = cipher
+        self.users = users
+        self.rule = compile_rule(rule) if rule else None
+        self.bind = bind
+        self.host_name = host_name
+        self.port = port
+        self.unix = unix
+        self.sslclient = sslclient
+        self.sslserver = sslserver
+        self.jump = None
+    def logtext(self, host, port):
+        return f' -> {self.rproto.name+("+ssl" if self.sslclient else "")} {self.bind}' + self.jump.logtext(host, port)
+    def match_rule(self, host, port):
+        return (self.rule is None) or self.rule(host) or self.rule(str(port))
+    @property
+    def rproto(self):
+        return self.protos[0]
+    @property
+    def auth(self):
+        return self.users[0] if self.users else b''
+    def udp_packet_unpack(self, data):
+        data = self.cipher.datagram.decrypt(data) if self.cipher else data
+        return self.rproto.udp_unpack(data)
+    def destination(self, host, port):
+        return self.host_name, self.port
+    def udp_prepare_connection(self, host, port, data):
+        data = self.jump.udp_prepare_connection(host, port, data)
+        whost, wport = self.jump.destination(host, port)
+        data = self.rproto.udp_connect(rauth=self.auth, host_name=whost, port=wport, data=data)
+        if self.cipher:
+            data = self.cipher.datagram.encrypt(data)
+        return data
+    def udp_start_server(self, args):
+        class Protocol(asyncio.DatagramProtocol):
+            def connection_made(prot, transport):
+                prot.transport = transport
+            def datagram_received(prot, data, addr):
+                asyncio.ensure_future(datagram_handler(prot.transport, data, addr, **vars(self), **args))
+        return asyncio.get_event_loop().create_datagram_endpoint(Protocol, local_addr=(self.host_name, self.port))
+    def wait_open_connection(self, host, port, local_addr, family):
+        if self.unix:
+            return asyncio.open_unix_connection(path=self.bind)
         else:
-            sslserver = sslclient = None
-        protonames = [i.name for i in protos]
-        if 'pack' in protonames and relay and relay != cls.DIRECT:
-            raise argparse.ArgumentTypeError('pack protocol cannot relay to other proxy')
-        urlpath, _, plugins = url.path.partition(',')
-        urlpath, _, lbind = urlpath.partition('@')
-        plugins = plugins.split(',') if plugins else None
-        cipher, _, loc = url.netloc.rpartition('@')
-        if cipher:
-            from .cipher import get_cipher
-            if ':' not in cipher:
+            return asyncio.open_connection(host=self.host_name, port=self.port, local_addr=local_addr, family=family)
+    async def prepare_ciphers_and_headers(self, reader_remote, writer_remote, host, port):
+        reader_remote, writer_remote = proto.sslwrap(reader_remote, writer_remote, self.sslclient, False, self.host_name)
+        _, writer_cipher_r = await prepare_ciphers(self.cipher, reader_remote, writer_remote, self.bind)
+        whost, wport = self.jump.destination(host, port)
+        await self.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=self.auth, host_name=whost, port=wport, writer_cipher_r=writer_cipher_r, myhost=self.host_name, sock=writer_remote.get_extra_info('socket'))
+        return await self.jump.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port)
+    def start_server(self, args):
+        handler = functools.partial(stream_handler, **vars(self), **args)
+        if self.unix:
+            return asyncio.start_unix_server(handler, path=self.bind)
+        else:
+            return asyncio.start_server(handler, host=self.host_name, port=self.port, reuse_port=args.get('ruport'))
+
+class ProxyQUIC(ProxySimple):
+    def __init__(self, quicserver, quicclient, **kw):
+        super().__init__(**kw)
+        self.quicserver = quicserver
+        self.quicclient = quicclient
+        self.handshake = None
+        self.streams = {}
+    def patch_writer(self, writer):
+        async def drain():
+            writer._transport.protocol.transmit()
+        #print('stream_id', writer.get_extra_info("stream_id"))
+        remote_addr = writer._transport.protocol._quic._network_paths[0].addr
+        writer.get_extra_info = dict(peername=remote_addr, sockname=remote_addr).get
+        writer.drain = drain
+        writer.close = writer.write_eof
+    async def wait_open_connection(self, *args):
+        if self.handshake is not None:
+            if not self.handshake.done():
+                await self.handshake
+            reader, writer = await self.handshake.result().create_stream()
+        else:
+            self.handshake = asyncio.get_event_loop().create_future()
+            import aioquic.asyncio
+            self.quic_egress_acm = aioquic.asyncio.connect(self.host_name, self.port, configuration=self.quicclient)
+            conn = await self.quic_egress_acm.__aenter__()
+            self.handshake.set_result(conn)
+            reader, writer = await conn.create_stream()
+        self.patch_writer(writer)
+        return reader, writer
+    async def start_server(self, args):
+        import aioquic.asyncio
+        def handler(reader, writer):
+            self.patch_writer(writer)
+            asyncio.ensure_future(stream_handler(reader, writer, **vars(self), **args))
+        server = await aioquic.asyncio.serve(
+            self.host_name,
+            self.port,
+            configuration=self.quicserver,
+            stream_handler=handler
+        )
+        return server
+
+class ProxySSH(ProxySimple):
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.streams = None
+    def logtext(self, host, port):
+        return f' -> sshtunnel {self.bind}' + self.jump.logtext(host, port)
+    async def wait_open_connection(self, *args, tunnel=None):
+        if self.streams is not None:
+            if not self.streams.done():
+                await self.streams
+            return self.streams.result()
+        self.streams = asyncio.get_event_loop().create_future()
+        try:
+            import asyncssh
+        except Exception:
+            raise Exception('Missing library: "pip3 install asyncssh"')
+        username, password = self.auth.decode().split(':', 1)
+        if password.startswith(':'):
+            client_keys = [password[1:]]
+            password = None
+        else:
+            client_keys = None
+        conn = await asyncssh.connect(host=self.host_name, port=self.port, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60, tunnel=tunnel)
+        if not self.streams.done():
+            self.streams.set_result((conn, None))
+        return conn, None
+    async def prepare_ciphers_and_headers(self, reader_remote, writer_remote, host, port):
+        whost, wport = self.jump.destination(host, port)
+        if isinstance(self.jump, ProxySSH):
+            reader_remote, writer_remote = await self.jump.wait_open_connection(tunnel=reader_remote)
+        else:
+            if self.jump.unix:
+                ssh_reader_stream, writer_remote = await reader_remote.open_unix_connection(self.jump.bind)
+            else:
+                ssh_reader_stream, writer_remote = await reader_remote.open_connection(whost, wport)
+            reader_remote = asyncio.StreamReader()
+            async def channel():
+                while not writer_remote.is_closing():
+                    buf = await ssh_reader_stream.read(65536)
+                    if not buf:
+                        break
+                    reader_remote.feed_data(buf)
+                reader_remote.feed_eof()
+            asyncio.ensure_future(channel())
+        return await self.jump.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port)
+
+class ProxyBackward(ProxySimple):
+    def __init__(self, backward, **kw):
+        super().__init__(**kw)
+        self.backward_num = backward
+        self.closed = False
+        self.writers = set()
+        self.conn = asyncio.Queue()
+    async def wait_open_connection(self, *args):
+        while True:
+            reader, writer = await self.conn.get()
+            if not writer.transport.is_closing():
+                return reader, writer
+    def close(self):
+        self.closed = True
+        for writer in self.writers:
+            try:
+                self.writer.close()
+            except Exception:
+                pass
+    async def start_server(self, args):
+        handler = functools.partial(stream_handler, **vars(self), **args)
+        for _ in range(self.backward_num):
+            asyncio.ensure_future(self.start_server_run(handler))
+        return self
+    async def start_server_run(self, handler):
+        errwait = 0
+        while not self.closed:
+            if self.unix:
+                wait = asyncio.open_unix_connection(path=self.bind)
+            else:
+                wait = asyncio.open_connection(host=self.host_name, port=self.port, local_addr=(self.lbind, 0) if self.lbind else None)
+            try:
+                reader, writer = await asyncio.wait_for(wait, timeout=SOCKET_TIMEOUT)
+                if self.closed:
+                    writer.close()
+                    break
+                writer.write(self.auth)
+                self.writers.add(writer)
                 try:
-                    cipher = base64.b64decode(cipher).decode()
+                    data = await reader.read_n(1)
+                except asyncio.TimeoutError:
+                    data = None
+                if data and data[0] != 0:
+                    reader.rollback(data)
+                    asyncio.ensure_future(handler(reader, writer))
+                else:
+                    writer.close()
+                errwait = 0
+                self.writers.discard(writer)
+            except Exception as ex:
+                try:
+                    writer.close()
                 except Exception:
                     pass
-                if ':' not in cipher:
-                    raise argparse.ArgumentTypeError('userinfo must be "cipher:key"')
-            err_str, cipher = get_cipher(cipher)
-            if err_str:
-                raise argparse.ArgumentTypeError(err_str)
-            if plugins:
-                from .plugin import get_plugin
-                for name in plugins:
-                    if not name: continue
-                    err_str, plugin = get_plugin(name)
-                    if err_str:
-                        raise argparse.ArgumentTypeError(err_str)
-                    cipher.plugins.append(plugin)
-        match = cls.compile_rule(url.query) if url.query else None
-        if loc:
-            host_name, port = proto.netloc_split(loc, default_port=22 if 'ssh' in rawprotos else 8080)
+                if not self.closed:
+                    await asyncio.sleep(errwait)
+                    errwait = min(errwait*1.3 + 0.1, 30)
+    def start_backward_client(self, args):
+        async def handler(reader, writer):
+            if self.auth:
+                try:
+                    assert self.auth == (await reader.read_n(len(self.auth)))
+                except Exception:
+                    return
+            await self.conn.put((reader, writer))
+        if self.unix:
+            return asyncio.start_unix_server(handler, path=self.bind)
         else:
-            host_name = port = None
-        if url.fragment.startswith('#'):
-            with open(url.fragment[1:]) as f:
-                auth = f.read().rstrip().encode()
-        else:
-            auth = url.fragment.encode()
-        users = [i.rstrip() for i in auth.split(b'\n')] if auth else None
-        auth = users[0] if users else b''
-        return ProxyURI(protos=protos, rproto=protos[0], cipher=cipher, auth=auth, users=users, \
-                        match=match, bind=loc or urlpath, host_name=host_name, port=port, \
-                        unix=not loc, lbind=lbind, sslclient=sslclient, sslserver=sslserver, \
-                        alive=True, direct='direct' in protonames, tunnel='tunnel' in protonames, \
-                        reuse='pack' in protonames or relay and relay.reuse, backward=rawprotos.count('in'), \
-                        ssh='ssh' in rawprotos, relay=relay)
-ProxyURI.DIRECT = ProxyURI(direct=True, tunnel=False, reuse=False, relay=None, alive=True, match=None, cipher=None, backward=None, ssh=None, lbind=None)
+            return asyncio.start_server(handler, host=self.host_name, port=self.port, reuse_port=args.get('ruport'))
+
+
+def compile_rule(filename):
+    if filename.startswith("{") and filename.endswith("}"):
+        return re.compile(filename[1:-1]).match
+    with open(filename) as f:
+        return re.compile('(:?'+''.join('|'.join(i.strip() for i in f if i.strip() and not i.startswith('#')))+')$').match
+
+def proxies_by_uri(uri_jumps):
+    jump = DIRECT
+    for uri in reversed(uri_jumps.split('__')):
+        proxy = proxy_by_uri(uri)
+        proxy.jump, jump = jump, proxy
+    return jump
+
+def proxy_by_uri(uri):
+    scheme, _, uri = uri.partition('://')
+    url = urllib.parse.urlparse('s://'+uri)
+    rawprotos = [i.lower() for i in scheme.split('+')]
+    err_str, protos = proto.get_protos(rawprotos)
+    if err_str:
+        raise argparse.ArgumentTypeError(err_str)
+    if 'ssl' in rawprotos or 'secure' in rawprotos:
+        import ssl
+        sslserver = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        sslclient = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        if 'ssl' in rawprotos:
+            sslclient.check_hostname = False
+            sslclient.verify_mode = ssl.CERT_NONE
+    else:
+        sslserver = sslclient = None
+    if 'quic' in rawprotos:
+        try:
+            import ssl, aioquic.quic.configuration
+        except Exception:
+            raise Exception('Missing library: "pip3 install aioquic"')
+        import logging
+        quicserver = aioquic.quic.configuration.QuicConfiguration(is_client=False)
+        quicclient = aioquic.quic.configuration.QuicConfiguration()
+        quicclient.verify_mode = ssl.CERT_NONE
+    protonames = [i.name for i in protos]
+    urlpath, _, plugins = url.path.partition(',')
+    urlpath, _, lbind = urlpath.partition('@')
+    plugins = plugins.split(',') if plugins else None
+    cipher, _, loc = url.netloc.rpartition('@')
+    if cipher:
+        from .cipher import get_cipher
+        if ':' not in cipher:
+            try:
+                cipher = base64.b64decode(cipher).decode()
+            except Exception:
+                pass
+            if ':' not in cipher:
+                raise argparse.ArgumentTypeError('userinfo must be "cipher:key"')
+        err_str, cipher = get_cipher(cipher)
+        if err_str:
+            raise argparse.ArgumentTypeError(err_str)
+        if plugins:
+            from .plugin import get_plugin
+            for name in plugins:
+                if not name: continue
+                err_str, plugin = get_plugin(name)
+                if err_str:
+                    raise argparse.ArgumentTypeError(err_str)
+                cipher.plugins.append(plugin)
+    if loc:
+        host_name, port = proto.netloc_split(loc, default_port=22 if 'ssh' in rawprotos else 8080)
+    else:
+        host_name = port = None
+    if url.fragment.startswith('#'):
+        with open(url.fragment[1:]) as f:
+            auth = f.read().rstrip().encode()
+    else:
+        auth = url.fragment.encode()
+    users = [i.rstrip() for i in auth.split(b'\n')] if auth else None
+    params = dict(protos=protos, cipher=cipher, users=users, rule=url.query, bind=loc or urlpath,
+                  host_name=host_name, port=port, unix=not loc, lbind=lbind, sslclient=sslclient, sslserver=sslserver)
+    if 'direct' in protonames:
+        return ProxyDirect(lbind=lbind)
+    elif 'in' in rawprotos:
+        return ProxyBackward(rawprotos.count('in'), **params)
+    elif 'quic' in rawprotos:
+        return ProxyQUIC(quicserver, quicclient, **params)
+    elif 'ssh' in protonames:
+        return ProxySSH(**params)
+    else:
+        return ProxySimple(**params)
 
 async def test_url(url, rserver):
     url = urllib.parse.urlparse(url)
@@ -539,7 +574,7 @@ async def test_url(url, rserver):
         print(f'--------------------------------')
         body = bytearray()
         while 1:
-            s = await reader.read_()
+            s = await reader.read(65536)
             if not s:
                 break
             body.extend(s)
@@ -548,11 +583,11 @@ async def test_url(url, rserver):
 
 def main():
     parser = argparse.ArgumentParser(description=__description__+'\nSupported protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect,pf,tunnel', epilog=f'Online help: <{__url__}>')
-    parser.add_argument('-l', dest='listen', default=[], action='append', type=ProxyURI.compile, help='tcp server uri (default: http+socks4+socks5://:8080/)')
-    parser.add_argument('-r', dest='rserver', default=[], action='append', type=ProxyURI.compile_relay, help='tcp remote server uri (default: direct)')
-    parser.add_argument('-ul', dest='ulisten', default=[], action='append', type=ProxyURI.compile, help='udp server setting uri (default: none)')
-    parser.add_argument('-ur', dest='urserver', default=[], action='append', type=ProxyURI.compile_relay, help='udp remote server uri (default: direct)')
-    parser.add_argument('-b', dest='block', type=ProxyURI.compile_rule, help='block regex rules')
+    parser.add_argument('-l', dest='listen', default=[], action='append', type=proxy_by_uri, help='tcp server uri (default: http+socks4+socks5://:8080/)')
+    parser.add_argument('-r', dest='rserver', default=[], action='append', type=proxies_by_uri, help='tcp remote server uri (default: direct)')
+    parser.add_argument('-ul', dest='ulisten', default=[], action='append', type=proxy_by_uri, help='udp server setting uri (default: none)')
+    parser.add_argument('-ur', dest='urserver', default=[], action='append', type=proxies_by_uri, help='udp remote server uri (default: direct)')
+    parser.add_argument('-b', dest='block', type=compile_rule, help='block regex rules')
     parser.add_argument('-a', dest='alived', default=0, type=int, help='interval to check remote alive (default: no check)')
     parser.add_argument('-s', dest='salgorithm', default='fa', choices=('fa', 'rr', 'rc', 'lc'), help='scheduling algorithm (default: first_available)')
     parser.add_argument('-d', dest='debug', action='count', help='turn on debug to see tracebacks (default: no debug)')
@@ -567,11 +602,23 @@ def main():
     parser.add_argument('--test', help='test this url for all remote proxies and exit')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     args = parser.parse_args()
+    if args.sslfile:
+        sslfile = args.sslfile.split(',')
+        for option in args.listen:
+            if option.sslclient:
+                option.sslclient.load_cert_chain(*sslfile)
+                option.sslserver.load_cert_chain(*sslfile)
+        for option in args.listen+args.rserver:
+            if isinstance(option, ProxyQUIC):
+                option.quicserver.load_cert_chain(*sslfile)
+    elif any(map(lambda o: o.sslclient or isinstance(o, ProxyQUIC), args.listen)):
+        print('You must specify --ssl to listen in ssl mode')
+        return
     if args.test:
         asyncio.get_event_loop().run_until_complete(test_url(args.test, args.rserver))
         return
     if not args.listen and not args.ulisten:
-        args.listen.append(ProxyURI.compile_relay('http+socks4+socks5://:8080/'))
+        args.listen.append(proxy_by_uri('http+socks4+socks5://:8080/'))
     args.httpget = {}
     if args.pac:
         pactext = 'function FindProxyForURL(u,h){' + (f'var b=/^(:?{args.block.__self__.pattern})$/i;if(b.test(h))return "";' if args.block else '')
@@ -584,15 +631,6 @@ def main():
         path, filename = gets.split(',', 1)
         with open(filename, 'rb') as f:
             args.httpget[path] = f.read()
-    if args.sslfile:
-        sslfile = args.sslfile.split(',')
-        for option in args.listen:
-            if option.sslclient:
-                option.sslclient.load_cert_chain(*sslfile)
-                option.sslserver.load_cert_chain(*sslfile)
-    elif any(map(lambda o: o.sslclient, args.listen)):
-        print('You must specify --ssl to listen in ssl mode')
-        return
     if args.daemon:
         try:
             __import__('daemon').DaemonContext().open()
@@ -620,15 +658,15 @@ def main():
     for option in args.ulisten:
         print('Serving on UDP', option.bind, 'by', ",".join(i.name for i in option.protos), f'({option.cipher.name})' if option.cipher else '')
         try:
-            server, protocol = loop.run_until_complete(option.start_udp_server(vars(args)))
+            server, protocol = loop.run_until_complete(option.udp_start_server(vars(args)))
             servers.append(server)
         except Exception as ex:
             print('Start server failed.\n\t==>', ex)
     for option in args.rserver:
-        if option.backward:
+        if isinstance(option, ProxyBackward):
             print('Serving on', option.bind, 'backward by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
             try:
-                server = loop.run_until_complete(option.backward.client_run(vars(args)))
+                server = loop.run_until_complete(option.start_backward_client(vars(args)))
                 servers.append(server)
             except Exception as ex:
                 print('Start server failed.\n\t==>', ex)

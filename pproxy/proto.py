@@ -57,7 +57,7 @@ class BaseProtocol:
         try:
             stat_conn(1)
             while True:
-                data = await reader.read_()
+                data = await reader.read(65536)
                 if not data:
                     break
                 if stat_bytes is None:
@@ -327,7 +327,7 @@ class HTTP(BaseProtocol):
         try:
             stat_conn(1)
             while True:
-                data = await reader.read_()
+                data = await reader.read(65536)
                 if not data:
                     break
                 if b'\r\n' in data and HTTP_LINE.match(data.split(b'\r\n', 1)[0].decode()):
@@ -513,85 +513,6 @@ class Echo(Transparent):
     def query_remote(self, sock):
         return 'echo', 0
 
-class Pack(BaseProtocol):
-    def reuse(self):
-        return True
-    def get_handler(self, reader, writer, verbose, tcp_handler=None, udp_handler=None):
-        class Handler:
-            def __init__(self):
-                self.sessions = {}
-                self.udpmap = {}
-                self.closed = False
-                self.ready = False
-                asyncio.ensure_future(self.reader_handler())
-            def __bool__(self):
-                return not self.closed
-            async def reader_handler(self):
-                try:
-                    while True:
-                        try:
-                            header = (await reader.readexactly(1))[0]
-                        except Exception:
-                            raise Exception('Connection closed')
-                        sid = await reader.read_n(8)
-                        if header in (0x01, 0x03, 0x04, 0x11, 0x13, 0x14):
-                            host_name, port, _ = await socks_address_stream(reader, header)
-                            if (header & 0x10 == 0) and tcp_handler:
-                                remote_reader, remote_writer = self.get_streams(sid)
-                                asyncio.ensure_future(tcp_handler(remote_reader, remote_writer, host_name, port))
-                            elif (header & 0x10 != 0) and udp_handler:
-                                self.get_datagram(sid, host_name, port)
-                        elif header in (0x20, 0x30):
-                            datalen = int.from_bytes(await reader.read_n(2), 'big')
-                            data = await reader.read_n(datalen)
-                            if header == 0x20 and sid in self.sessions:
-                                self.sessions[sid].feed_data(data)
-                            elif header == 0x30 and sid in self.udpmap and udp_handler:
-                                host_name, port, sendto = self.udpmap[sid]
-                                asyncio.ensure_future(udp_handler(sendto, data, host_name, port, sid))
-                        elif header == 0x40:
-                            if sid in self.sessions:
-                                self.sessions.pop(sid).feed_eof()
-                        else:
-                            raise Exception(f'Unknown header {header}')
-                except Exception as ex:
-                    if not isinstance(ex, asyncio.TimeoutError) and not str(ex).startswith('Connection closed'):
-                        verbose(f'{str(ex) or "Unsupported protocol"}')
-                finally:
-                    for sid, session in self.sessions.items():
-                        session.feed_eof()
-                    try: writer.close()
-                    except Exception: pass
-                    self.closed = True
-            def get_streams(self, sid):
-                self.sessions[sid] = asyncio.StreamReader()
-                class Writer():
-                    def write(self, data):
-                        while len(data) >= 32*1024:
-                            writer.write(b'\x20'+sid+(32*1024).to_bytes(2,'big')+data[:32*1024])
-                            data = data[32*1024:]
-                        if data:
-                            writer.write(b'\x20'+sid+len(data).to_bytes(2,'big')+data)
-                    def drain(self):
-                        return writer.drain()
-                    def close(self):
-                        if not writer.transport.is_closing():
-                            writer.write(b'\x40'+sid)
-                return self.sessions[sid], Writer()
-            def connect(self, host_name, port):
-                self.ready = True
-                sid = os.urandom(8)
-                writer.write(b'\x03' + sid + packstr(host_name.encode()) + port.to_bytes(2, 'big'))
-                return self.get_streams(sid)
-            def get_datagram(self, sid, host_name, port):
-                def sendto(data):
-                    if data:
-                        writer.write(b'\x30'+sid+len(data).to_bytes(2,'big')+data)
-                self.udpmap[sid] = (host_name, port, sendto)
-                return self.udpmap[sid]
-        writer.get_extra_info('socket').setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        return Handler()
-
 async def accept(protos, reader, **kw):
     for proto in protos:
         try:
@@ -612,7 +533,7 @@ def udp_accept(protos, data, **kw):
             return (proto,) + ret
     raise Exception(f'Unsupported protocol {data[:10]}')
 
-MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, ssh=SSH, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, pack=Pack, ws=WS, trojan=Trojan, ssl='', secure='')
+MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, ssh=SSH, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, ws=WS, trojan=Trojan, ssl='', secure='', quic='')
 MAPPINGS['in'] = ''
 
 def get_protos(rawprotos):
@@ -662,7 +583,7 @@ def sslwrap(reader, writer, sslcontext, server_side=False, server_hostname=None,
     async def channel():
         try:
             while True:
-                data = await reader.read_()
+                data = await reader.read(65536)
                 if not data:
                     break
                 ssl.data_received(data)
