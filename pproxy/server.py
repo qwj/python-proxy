@@ -158,7 +158,7 @@ class ProxyDirect(object):
         self.udpmap = {}
     @property
     def direct(self):
-        return isinstance(self, ProxyDirect)
+        return type(self) is ProxyDirect
     def logtext(self, host, port):
         return '' if host == 'tunnel' else f' -> {host}:{port}'
     def match_rule(self, host, port):
@@ -315,7 +315,12 @@ class ProxyQUIC(ProxySimple):
         remote_addr = writer._transport.protocol._quic._network_paths[0].addr
         writer.get_extra_info = dict(peername=remote_addr, sockname=remote_addr).get
         writer.drain = drain
-        writer.close = writer.write_eof
+        def close():
+            try:
+                writer.write_eof()
+            except Exception:
+                pass
+        writer.close = close
     async def wait_open_connection(self, *args):
         if self.handshake is not None:
             if not self.handshake.done():
