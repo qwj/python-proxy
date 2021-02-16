@@ -623,7 +623,7 @@ def main():
     if args.pac:
         pactext = 'function FindProxyForURL(u,h){' + (f'var b=/^(:?{args.block.__self__.pattern})$/i;if(b.test(h))return "";' if args.block else '')
         for i, option in enumerate(args.rserver):
-            pactext += (f'var m{i}=/^(:?{option.match.__self__.pattern})$/i;if(m{i}.test(h))' if option.match else '') + 'return "PROXY %(host)s";'
+            pactext += (f'var m{i}=/^(:?{option.rule.__self__.pattern})$/i;if(m{i}.test(h))' if option.rule else '') + 'return "PROXY %(host)s";'
         args.httpget[args.pac] = pactext+'return "DIRECT";}'
         args.httpget[args.pac+'/all'] = 'function FindProxyForURL(u,h){return "PROXY %(host)s";}'
         args.httpget[args.pac+'/none'] = 'function FindProxyForURL(u,h){return "DIRECT";}'
