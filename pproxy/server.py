@@ -294,7 +294,7 @@ class ProxySimple(ProxyDirect):
         whost, wport = self.jump.destination(host, port)
         await self.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=self.auth, host_name=whost, port=wport, writer_cipher_r=writer_cipher_r, myhost=self.host_name, sock=writer_remote.get_extra_info('socket'))
         return await self.jump.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port)
-    def start_server(self, args):
+    def start_server(self, args, stream_handler=stream_handler):
         handler = functools.partial(stream_handler, **vars(self), **args)
         if self.unix:
             return asyncio.start_unix_server(handler, path=self.bind)
@@ -307,7 +307,6 @@ class ProxyQUIC(ProxySimple):
         self.quicserver = quicserver
         self.quicclient = quicclient
         self.handshake = None
-        self.streams = {}
     def patch_writer(self, writer):
         async def drain():
             writer._transport.protocol.transmit()
@@ -315,7 +314,13 @@ class ProxyQUIC(ProxySimple):
         remote_addr = writer._transport.protocol._quic._network_paths[0].addr
         writer.get_extra_info = dict(peername=remote_addr, sockname=remote_addr).get
         writer.drain = drain
+        closed = False
+        def is_closing():
+            return closed
+        writer.is_closing = is_closing
         def close():
+            nonlocal closed
+            closed = True
             try:
                 writer.write_eof()
             except Exception:
@@ -345,7 +350,7 @@ class ProxyQUIC(ProxySimple):
         reader, writer = conn._create_stream(stream_id)
         self.patch_writer(writer)
         return reader, writer
-    async def start_server(self, args):
+    async def start_server(self, args, stream_handler=stream_handler):
         import aioquic.asyncio
         def handler(reader, writer):
             self.patch_writer(writer)
@@ -405,16 +410,17 @@ class ProxySSH(ProxySimple):
         return await self.jump.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port)
 
 class ProxyBackward(ProxySimple):
-    def __init__(self, backward, **kw):
+    def __init__(self, backward, backward_num, **kw):
         super().__init__(**kw)
-        self.backward_num = backward
+        self.backward = backward
+        self.backward_num = backward_num
         self.closed = False
         self.writers = set()
         self.conn = asyncio.Queue()
     async def wait_open_connection(self, *args):
         while True:
             reader, writer = await self.conn.get()
-            if not writer.transport.is_closing():
+            if not writer.is_closing():
                 return reader, writer
     def close(self):
         self.closed = True
@@ -423,7 +429,7 @@ class ProxyBackward(ProxySimple):
                 self.writer.close()
             except Exception:
                 pass
-    async def start_server(self, args):
+    async def start_server(self, args, stream_handler=stream_handler):
         handler = functools.partial(stream_handler, **vars(self), **args)
         for _ in range(self.backward_num):
             asyncio.ensure_future(self.start_server_run(handler))
@@ -431,16 +437,13 @@ class ProxyBackward(ProxySimple):
     async def start_server_run(self, handler):
         errwait = 0
         while not self.closed:
-            if self.unix:
-                wait = asyncio.open_unix_connection(path=self.bind)
-            else:
-                wait = asyncio.open_connection(host=self.host_name, port=self.port, local_addr=(self.lbind, 0) if self.lbind else None)
+            wait = self.backward.open_connection(self.host_name, self.port, self.lbind, None)
             try:
                 reader, writer = await asyncio.wait_for(wait, timeout=SOCKET_TIMEOUT)
                 if self.closed:
                     writer.close()
                     break
-                writer.write(self.auth)
+                writer.write(self.auth or b'\x01')
                 self.writers.add(writer)
                 try:
                     data = await reader.read_n(1)
@@ -462,17 +465,14 @@ class ProxyBackward(ProxySimple):
                     await asyncio.sleep(errwait)
                     errwait = min(errwait*1.3 + 0.1, 30)
     def start_backward_client(self, args):
-        async def handler(reader, writer):
-            if self.auth:
-                try:
-                    assert self.auth == (await reader.read_n(len(self.auth)))
-                except Exception:
-                    return
+        async def handler(reader, writer, **kw):
+            auth = self.auth or b'\x01'
+            try:
+                assert auth == (await reader.read_n(len(auth)))
+            except Exception:
+                return
             await self.conn.put((reader, writer))
-        if self.unix:
-            return asyncio.start_unix_server(handler, path=self.bind)
-        else:
-            return asyncio.start_server(handler, host=self.host_name, port=self.port, reuse_port=args.get('ruport'))
+        return self.backward.start_server(args, handler)
 
 
 def compile_rule(filename):
@@ -548,18 +548,20 @@ def proxy_by_uri(uri):
     else:
         auth = url.fragment.encode()
     users = [i.rstrip() for i in auth.split(b'\n')] if auth else None
-    params = dict(protos=protos, cipher=cipher, users=users, rule=url.query, bind=loc or urlpath,
-                  host_name=host_name, port=port, unix=not loc, lbind=lbind, sslclient=sslclient, sslserver=sslserver)
     if 'direct' in protonames:
         return ProxyDirect(lbind=lbind)
-    elif 'in' in rawprotos:
-        return ProxyBackward(rawprotos.count('in'), **params)
-    elif 'quic' in rawprotos:
-        return ProxyQUIC(quicserver, quicclient, **params)
-    elif 'ssh' in protonames:
-        return ProxySSH(**params)
     else:
-        return ProxySimple(**params)
+        params = dict(protos=protos, cipher=cipher, users=users, rule=url.query, bind=loc or urlpath,
+                      host_name=host_name, port=port, unix=not loc, lbind=lbind, sslclient=sslclient, sslserver=sslserver)
+        if 'quic' in rawprotos:
+            proxy = ProxyQUIC(quicserver, quicclient, **params)
+        elif 'ssh' in protonames:
+            proxy = ProxySSH(**params)
+        else:
+            proxy = ProxySimple(**params)
+        if 'in' in rawprotos:
+            proxy = ProxyBackward(proxy, rawprotos.count('in'), **params)
+        return proxy
 
 async def test_url(url, rserver):
     url = urllib.parse.urlparse(url)
@@ -626,6 +628,8 @@ def main():
         for option in args.listen+args.rserver:
             if isinstance(option, ProxyQUIC):
                 option.quicserver.load_cert_chain(*sslfile)
+            if isinstance(option, ProxyBackward) and isinstance(option.backward, ProxyQUIC):
+                option.backward.quicserver.load_cert_chain(*sslfile)
     elif any(map(lambda o: o.sslclient or isinstance(o, ProxyQUIC), args.listen)):
         print('You must specify --ssl to listen in ssl mode')
         return
