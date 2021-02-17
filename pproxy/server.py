@@ -127,7 +127,7 @@ async def check_server_alive(interval, rserver, verbose):
     while True:
         await asyncio.sleep(interval)
         for remote in rserver:
-            if isinstance(remote, ProxyDirect):
+            if type(remote) is ProxyDirect:
                 continue
             try:
                 _, writer = await remote.open_connection(None, None, None, None, timeout=3)
