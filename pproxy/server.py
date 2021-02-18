@@ -326,7 +326,7 @@ class ProxyQUIC(ProxySimple):
             except Exception:
                 pass
         writer.close = close
-    async def wait_open_connection(self, *args):
+    async def wait_quic_connection(self):
         if self.handshake is not None:
             if not self.handshake.done():
                 await self.handshake
@@ -340,27 +340,53 @@ class ProxyQUIC(ProxySimple):
                     elif isinstance(event, aioquic.quic.events.ConnectionTerminated):
                         self.handshake = None
                         self.quic_egress_acm = None
+                    elif isinstance(event, aioquic.quic.events.StreamDataReceived):
+                        if event.stream_id in self.udpmap:
+                            self.udpmap[event.stream_id](self.udp_packet_unpack(event.data))
+                            return
                     super().quic_event_received(event)
             self.quic_egress_acm = aioquic.asyncio.connect(self.host_name, self.port, create_protocol=Protocol, configuration=self.quicclient)
             conn = await self.quic_egress_acm.__aenter__()
             await self.handshake
+    async def udp_open_connection(self, host, port, data, addr, reply):
+        await self.wait_quic_connection()
+        conn = self.handshake.result()
+        if addr in self.udpmap:
+            stream_id = self.udpmap[addr]
+        else:
+            stream_id = conn._quic.get_next_available_stream_id(False)
+            self.udpmap[addr] = stream_id
+            self.udpmap[stream_id] = reply
+            conn._quic._get_or_create_stream_for_send(stream_id)
+        conn._quic.send_stream_data(stream_id, data, False)
+        conn.transmit()
+    async def wait_open_connection(self, *args):
+        await self.wait_quic_connection()
         conn = self.handshake.result()
         stream_id = conn._quic.get_next_available_stream_id(False)
         conn._quic._get_or_create_stream_for_send(stream_id)
         reader, writer = conn._create_stream(stream_id)
         self.patch_writer(writer)
         return reader, writer
+    async def udp_start_server(self, args):
+        import aioquic.asyncio, aioquic.quic.events
+        class Protocol(aioquic.asyncio.QuicConnectionProtocol):
+            def quic_event_received(s, event):
+                if isinstance(event, aioquic.quic.events.StreamDataReceived):
+                    stream_id = event.stream_id
+                    addr = ('quic '+self.bind, stream_id)
+                    event.sendto = lambda data, addr: (s._quic.send_stream_data(stream_id, data, False), s.transmit())
+                    event.get_extra_info = {}.get
+                    asyncio.ensure_future(datagram_handler(event, event.data, addr, **vars(self), **args))
+                    return
+                super().quic_event_received(event)
+        return await aioquic.asyncio.serve(self.host_name, self.port, configuration=self.quicserver, create_protocol=Protocol), None
     def start_server(self, args, stream_handler=stream_handler):
         import aioquic.asyncio
         def handler(reader, writer):
             self.patch_writer(writer)
             asyncio.ensure_future(stream_handler(reader, writer, **vars(self), **args))
-        return aioquic.asyncio.serve(
-            self.host_name,
-            self.port,
-            configuration=self.quicserver,
-            stream_handler=handler
-        )
+        return aioquic.asyncio.serve(self.host_name, self.port, configuration=self.quicserver, stream_handler=handler)
 
 class ProxySSH(ProxySimple):
     def __init__(self, **kw):
@@ -654,19 +680,19 @@ def main():
             if option.sslclient:
                 option.sslclient.load_cert_chain(*sslfile)
                 option.sslserver.load_cert_chain(*sslfile)
-        for option in args.listen+args.rserver:
+        for option in args.listen+args.ulisten+args.rserver+args.urserver:
             if isinstance(option, ProxyQUIC):
                 option.quicserver.load_cert_chain(*sslfile)
             if isinstance(option, ProxyBackward) and isinstance(option.backward, ProxyQUIC):
                 option.backward.quicserver.load_cert_chain(*sslfile)
-    elif any(map(lambda o: o.sslclient or isinstance(o, ProxyQUIC), args.listen)):
+    elif any(map(lambda o: o.sslclient or isinstance(o, ProxyQUIC), args.listen+args.ulisten)):
         print('You must specify --ssl to listen in ssl mode')
         return
     if args.test:
         asyncio.get_event_loop().run_until_complete(test_url(args.test, args.rserver))
         return
     if not args.listen and not args.ulisten:
-        args.listen.append(proxy_by_uri('http+socks4+socks5://:8080/'))
+        args.listen.append(proxies_by_uri('http+socks4+socks5://:8080/'))
     args.httpget = {}
     if args.pac:
         pactext = 'function FindProxyForURL(u,h){' + (f'var b=/^(:?{args.block.__self__.pattern})$/i;if(b.test(h))return "";' if args.block else '')
