@@ -413,6 +413,8 @@ class ProxySSH(ProxySimple):
             reader, writer = self.patch_stream(reader, writer, host, port)
         return reader, writer
     async def start_server(self, args, stream_handler=stream_handler, tunnel=None):
+        if type(self.jump) is ProxyDirect:
+            raise Exception('ssh server mode unsupported')
         await self.wait_ssh_connection(tunnel=tunnel)
         conn = self.sshconn.result()
         if isinstance(self.jump, ProxySSH):

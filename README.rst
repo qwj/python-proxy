@@ -73,7 +73,7 @@ Features
 - Proxy client/server for TCP/UDP.
 - Schedule (load balance) among remote servers.
 - Incoming traffic auto-detect.
-- Tunnel/relay/backward-relay support.
+- Tunnel/jump/backward-jump support.
 - Unix domain socket support.
 - User/password authentication support.
 - Filter/block hostname by regex patterns.
@@ -115,6 +115,8 @@ Protocols
 | trojan            | ✔          | ✔          |            |            | trojan://    |
 +-------------------+------------+------------+------------+------------+--------------+
 | ssh tunnel        |            | ✔          |            |            | ssh://       |
++-------------------+------------+------------+------------+------------+--------------+
+| quic              | ✔          | ✔          |            |            | http+quic:// |
 +-------------------+------------+------------+------------+------------+--------------+
 | iptables nat      | ✔          |            |            |            | redir://     |
 +-------------------+------------+------------+------------+------------+--------------+
@@ -366,7 +368,7 @@ URI Syntax
 
   - The username, colon ':', and the password
 
-URIs can be joined by "__" to indicate tunneling by relay. For example, ss://1.2.3.4:1324__http://4.5.6.7:4321 make remote connection to the first shadowsocks proxy server, and then tunnel to the second http proxy server.
+URIs can be joined by "__" to indicate tunneling by jump. For example, ss://1.2.3.4:1324__http://4.5.6.7:4321 make remote connection to the first shadowsocks proxy server, and then jump to the second http proxy server.
 
 .. _AEAD: http://shadowsocks.org/en/spec/AEAD-Ciphers.html
 
@@ -559,9 +561,7 @@ Examples
 
   Make sure **pproxy** runs in root mode (sudo), otherwise it cannot redirect pf packet.
 
-- Relay tunnel
-
-  Relay tunnel example:
+- Multiple jumps example
 
   .. code:: rst
 
@@ -659,6 +659,12 @@ Examples
 
   Server connects to client_ip:8081 and waits for client proxy requests. The protocol http specified is just an example. It can be any protocol and cipher **pproxy** supports. The scheme "**in**" should exist in URI to inform **pproxy** that it is a backward proxy.
 
+  .. code:: rst
+
+    $ pproxy -l http+in://jumpserver__http://client_ip:8081
+
+  It is a complicated example. Server connects to client_ip:8081 by jump http://jumpserver. The backward proxy works through jumps.
+
 - SSH client tunnel
 
   SSH client tunnel support is enabled by installing additional library asyncssh_. After "pip3 install asyncssh", you can specify "**ssh**" as scheme to proxy via ssh client tunnel.
@@ -675,6 +681,30 @@ Examples
 
   SSH connection known_hosts feature is disabled by default.
 
+- SSH jump
+
+  SSH jump is supported by using "__" concatenation
+
+  .. code:: rst
+
+    $ pproxy -r ssh://server1__ssh://server2__ssh://server3
+
+  First connection to server1 is made. Second, ssh connection to server2 is made from server1. Finally, connect to server3, and use server3 for proxying traffic.
+
+- SSH remote forward
+
+  .. code:: rst
+
+    $ pproxy -l ssh://server__tunnel://0.0.0.0:1234 -r tunnel://127.0.0.1:1234
+
+  TCP :1234 on remote server is forwarded to 127.0.0.1:1234 on local server
+
+  .. code:: rst
+
+    $ pproxy -l ssh://server1__ssh://server2__ss://0.0.0.0:1234 -r ss://server3:1234
+
+  It is a complicated example. SSH server2 is jumped from SSH server1, and ss://0.0.0.0:1234 on server2 is listened. Traffic is forwarded to ss://server3:1234.
+
 - Trojan protocol example
 
   Normally trojan:// should be used together with ssl://. You should specify the SSL crt/key file for ssl usage. A typical trojan server would be:
@@ -684,6 +714,21 @@ Examples
     $ pproxy --ssl ssl.crt,ssl.key -l trojan+tunnel{localhost:80}+ssl://:443#yourpassword -vv
 
   If trojan password doesn't match, the tunnal{localhost:80} will be switched to. It looks exactly the same as a common HTTPS website.
+
+- QUIC protocol example
+
+  QUIC is a UDP stream protocol in HTTP/3. Library **aioquic** is required if you want to proxy via QUIC.
+
+  .. code:: rst
+
+    $ pip3 install aioquic
+    $ pproxy --ssl ssl.crt,ssl.key -l quic://:1234
+
+  On the client:
+
+    $ pproxy -r quic://server:1234
+
+  QUIC protocol can transfer a lot of TCP streams on one single UDP stream. If the connection number is hugh, QUIC can benefit by reducing TCP handshake time.
 
 - VPN Server Example
 
