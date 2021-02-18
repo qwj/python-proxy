@@ -41,11 +41,14 @@ setup(
             'uvloop >= 0.13.0'
         ],
         'sshtunnel': [
-            'asyncssh >= 1.16.0',
+            'asyncssh >= 2.5.0',
+        ],
+        'quic': [
+            'aioquic >= 0.9.7',
         ],
         'daemon': [
             'python-daemon >= 2.2.3',
-        ]
+        ],
     },
     install_requires    = [],
     entry_points        = {

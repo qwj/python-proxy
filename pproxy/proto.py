@@ -377,7 +377,7 @@ class SSH(BaseProtocol):
 class Transparent(BaseProtocol):
     async def guess(self, reader, sock, **kw):
         remote = self.query_remote(sock)
-        return remote is not None and sock.getsockname() != remote
+        return remote is not None and (sock is None or sock.getsockname() != remote)
     async def accept(self, reader, user, sock, **kw):
         remote = self.query_remote(sock)
         return user, remote[0], remote[1]
@@ -422,7 +422,7 @@ class Tunnel(Transparent):
     def query_remote(self, sock):
         if not self.param:
             return 'tunnel', 0
-        dst = sock.getsockname()
+        dst = sock.getsockname() if sock else (None, None)
         return netloc_split(self.param, dst[0], dst[1])
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
         pass
