@@ -9,7 +9,11 @@ DUMMY = lambda s: s
 class ProxyReader(asyncio.StreamReader):
     def __init__(self, o=None):
         if o:
-            self.__dict__ = o.__dict__
+            for n in dir(o):
+                if not n.startswith('__'):
+                    setattr(self, n, getattr(o, n))
+        else:
+            super(self).__init__()
     def read_w(self, n):
         return asyncio.wait_for(self.read(n), timeout=SOCKET_TIMEOUT)
     def read_n(self, n):
@@ -321,9 +325,7 @@ class ProxyQUIC(ProxySimple):
         writer.get_extra_info = dict(peername=remote_addr, sockname=remote_addr).get
         writer.drain = drain
         closed = False
-        def is_closing():
-            return closed
-        writer.is_closing = is_closing
+        writer.is_closing = lambda: closed
         def close():
             nonlocal closed
             closed = True
@@ -403,7 +405,7 @@ class ProxySSH(ProxySimple):
     def patch_stream(self, ssh_reader, writer, host, port):
         reader = asyncio.StreamReader()
         async def channel():
-            while not writer.is_closing():
+            while not ssh_reader.at_eof() and not writer.is_closing():
                 buf = await ssh_reader.read(65536)
                 if not buf:
                     break

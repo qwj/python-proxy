@@ -56,7 +56,7 @@ class BaseProtocol:
     async def channel(self, reader, writer, stat_bytes, stat_conn):
         try:
             stat_conn(1)
-            while True:
+            while not reader.at_eof() and not writer.is_closing():
                 data = await reader.read(65536)
                 if not data:
                     break
@@ -326,7 +326,7 @@ class HTTP(BaseProtocol):
     async def http_channel(self, reader, writer, stat_bytes, stat_conn):
         try:
             stat_conn(1)
-            while True:
+            while not reader.at_eof() and not writer.is_closing():
                 data = await reader.read(65536)
                 if not data:
                     break
@@ -582,7 +582,7 @@ def sslwrap(reader, writer, sslcontext, server_side=False, server_hostname=None,
     ssl.connection_made(Transport())
     async def channel():
         try:
-            while True:
+            while not reader.at_eof() and not ssl._app_transport.closed:
                 data = await reader.read(65536)
                 if not data:
                     break
@@ -599,6 +599,8 @@ def sslwrap(reader, writer, sslcontext, server_side=False, server_hostname=None,
             ssl._app_transport.write(data)
         def drain(self):
             return writer.drain()
+        def is_closing(self):
+            return ssl._app_transport.closed
         def close(self):
             ssl._app_transport.close()
     return ssl_reader, Writer()
