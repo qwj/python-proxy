@@ -11,7 +11,10 @@ def patch_StreamReader(c=asyncio.StreamReader):
     c.read_n = lambda self, n: asyncio.wait_for(self.readexactly(n), timeout=SOCKET_TIMEOUT)
     c.read_until = lambda self, s: asyncio.wait_for(self.readuntil(s), timeout=SOCKET_TIMEOUT)
     c.rollback = lambda self, s: self._buffer.__setitem__(slice(0, 0), s)
+def patch_StreamWriter(c=asyncio.StreamWriter):
+    c.is_closing = lambda self: self._transport.is_closing() # Python 3.6 fix
 patch_StreamReader()
+patch_StreamWriter()
 
 class AuthTable(object):
     _auth = {}
@@ -468,7 +471,7 @@ class ProxyBackward(ProxySimple):
     async def wait_open_connection(self, *args):
         while True:
             reader, writer = await self.conn.get()
-            if not writer.is_closing() and not reader.at_eof():
+            if not reader.at_eof() and not writer.is_closing():
                 return reader, writer
     def close(self):
         self.closed = True
