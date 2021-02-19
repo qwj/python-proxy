@@ -553,7 +553,7 @@ def get_protos(rawprotos):
 def sslwrap(reader, writer, sslcontext, server_side=False, server_hostname=None, verbose=None):
     if sslcontext is None:
         return reader, writer
-    ssl_reader = asyncio.StreamReader()
+    ssl_reader = type(reader)()
     class Protocol(asyncio.Protocol):
         def data_received(self, data):
             ssl_reader.feed_data(data)

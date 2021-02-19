@@ -2,14 +2,22 @@ import argparse, time, re, asyncio, functools, base64, random, urllib.parse, soc
 from . import proto
 from .__doc__ import *
 
-SOCKET_TIMEOUT = 300
+SOCKET_TIMEOUT = 60
 UDP_LIMIT = 30
 DUMMY = lambda s: s
 
-asyncio.StreamReader.read_w = lambda self, n: asyncio.wait_for(self.read(n), timeout=SOCKET_TIMEOUT)
-asyncio.StreamReader.read_n = lambda self, n: asyncio.wait_for(self.readexactly(n), timeout=SOCKET_TIMEOUT)
-asyncio.StreamReader.read_until = lambda self, s: asyncio.wait_for(self.readuntil(s), timeout=SOCKET_TIMEOUT)
-asyncio.StreamReader.rollback = lambda self, s: self._buffer.__setitem__(slice(0, 0), s)
+class ProxyReader(asyncio.StreamReader):
+    def __init__(self, o=None):
+        if o:
+            self.__dict__ = o.__dict__
+    def read_w(self, n):
+        return asyncio.wait_for(self.read(n), timeout=SOCKET_TIMEOUT)
+    def read_n(self, n):
+        return asyncio.wait_for(self.readexactly(n), timeout=SOCKET_TIMEOUT)
+    def read_until(self, s):
+        return asyncio.wait_for(self.readuntil(s), timeout=SOCKET_TIMEOUT)
+    def rollback(self, s):
+        self._buffer.__setitem__(slice(0, 0), s)
 
 class AuthTable(object):
     _auth = {}
@@ -56,7 +64,7 @@ def schedule(rserver, salgorithm, host_name, port):
 
 async def stream_handler(reader, writer, unix, lbind, protos, rserver, cipher, sslserver, debug=0, authtime=86400*30, block=None, salgorithm='fa', verbose=DUMMY, modstat=lambda u,r,h:lambda i:DUMMY, **kwargs):
     try:
-        reader, writer = proto.sslwrap(reader, writer, sslserver, True, None, verbose)
+        reader, writer = proto.sslwrap(ProxyReader(reader), writer, sslserver, True, None, verbose)
         if unix:
             remote_ip, server_ip, remote_text = 'local', None, 'unix_local'
         else:
@@ -219,10 +227,8 @@ class ProxyDirect(object):
             reader, writer = await asyncio.wait_for(wait, timeout=timeout)
         except Exception as ex:
             raise
-        return reader, writer
-    def prepare_connection(self, reader_remote, writer_remote, host, port):
-        return self.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port)
-    async def prepare_ciphers_and_headers(self, reader_remote, writer_remote, host, port):
+        return ProxyReader(reader), writer
+    async def prepare_connection(self, reader_remote, writer_remote, host, port):
         return reader_remote, writer_remote
     async def tcp_connect(self, host, port, local_addr=None, lbind=None):
         reader, writer = await self.open_connection(host, port, local_addr, lbind)
@@ -288,12 +294,12 @@ class ProxySimple(ProxyDirect):
             return asyncio.open_unix_connection(path=self.bind)
         else:
             return asyncio.open_connection(host=self.host_name, port=self.port, local_addr=local_addr, family=family)
-    async def prepare_ciphers_and_headers(self, reader_remote, writer_remote, host, port):
+    async def prepare_connection(self, reader_remote, writer_remote, host, port):
         reader_remote, writer_remote = proto.sslwrap(reader_remote, writer_remote, self.sslclient, False, self.host_name)
         _, writer_cipher_r = await prepare_ciphers(self.cipher, reader_remote, writer_remote, self.bind)
         whost, wport = self.jump.destination(host, port)
         await self.rproto.connect(reader_remote=reader_remote, writer_remote=writer_remote, rauth=self.auth, host_name=whost, port=wport, writer_cipher_r=writer_cipher_r, myhost=self.host_name, sock=writer_remote.get_extra_info('socket'))
-        return await self.jump.prepare_ciphers_and_headers(reader_remote, writer_remote, host, port)
+        return await self.jump.prepare_connection(reader_remote, writer_remote, host, port)
     def start_server(self, args, stream_handler=stream_handler):
         handler = functools.partial(stream_handler, **vars(self), **args)
         if self.unix:
@@ -470,7 +476,7 @@ class ProxyBackward(ProxySimple):
     async def wait_open_connection(self, *args):
         while True:
             reader, writer = await self.conn.get()
-            if not writer.is_closing():
+            if not writer.is_closing() and not reader.at_eof():
                 return reader, writer
     def close(self):
         self.closed = True
@@ -524,7 +530,7 @@ class ProxyBackward(ProxySimple):
                 auth = b'\x01'+auth
             if auth:
                 try:
-                    assert auth == (await reader.read_n(len(auth)))
+                    assert auth == (await asyncio.wait_for(reader.readexactly(len(auth)), timeout=SOCKET_TIMEOUT))
                 except Exception:
                     return
             await self.conn.put((reader, writer))
