@@ -12,7 +12,7 @@ python-proxy
 .. |Downloads| image:: https://pepy.tech/badge/pproxy
    :target: https://pepy.tech/project/pproxy
 
-HTTP/Socks4/Socks5/Shadowsocks/ShadowsocksR/SSH/Redirect/Pf TCP/UDP asynchronous tunnel proxy implemented in Python3 asyncio.
+HTTP/Socks4/Socks5/Shadowsocks/ShadowsocksR/SSH/Redirect/Pf/HTTP2/HTTP3/QUIC TCP/UDP asynchronous tunnel proxy implemented in Python3 asyncio.
 
 QuickStart
 ----------
@@ -75,6 +75,7 @@ Features
 - Incoming traffic auto-detect.
 - Tunnel/jump/backward-jump support.
 - Unix domain socket support.
+- HTTP v2, HTTP v3 (based on QUIC)
 - User/password authentication support.
 - Filter/block hostname by regex patterns.
 - SSL/TLS client/server support.
@@ -99,6 +100,8 @@ Protocols
 | (get,post,etc)    |            |            |            |            | (as client)  |
 +-------------------+------------+------------+------------+------------+--------------+
 | http v2 (connect) | ✔          | ✔          |            |            | h2://        |
++-------------------+------------+------------+------------+------------+--------------+
+| http v3 (connect) | ✔          | ✔          |            |            | h3://        |
 +-------------------+------------+------------+------------+------------+--------------+
 | https             | ✔          | ✔          |            |            | http+ssl://  |
 +-------------------+------------+------------+------------+------------+--------------+

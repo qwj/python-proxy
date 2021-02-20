@@ -508,6 +508,93 @@ class ProxyQUIC(ProxySimple):
             asyncio.ensure_future(stream_handler(reader, writer, **vars(self), **args))
         return aioquic.asyncio.serve(self.host_name, self.port, configuration=self.quicserver, stream_handler=handler)
 
+class ProxyH3(ProxyQUIC):
+    def get_stream(self, conn, stream_id):
+        remote_addr = conn._quic._network_paths[0].addr
+        reader = asyncio.StreamReader()
+        class StreamWriter():
+            def __init__(self):
+                self.closed = False
+                self.headers = asyncio.get_event_loop().create_future()
+            def get_extra_info(self, key):
+                return dict(peername=remote_addr, sockname=remote_addr).get(key)
+            def write(self, data):
+                conn.http.send_data(stream_id, data, False)
+                conn.transmit()
+            async def drain(self):
+                conn.transmit()
+            def is_closing(self):
+                return self.closed
+            def close(self):
+                if not self.closed:
+                    conn.http.send_data(stream_id, b'', True)
+                    conn.transmit()
+                    conn.close_stream(stream_id)
+                self.closed = True
+            def send_headers(self, headers):
+                conn.http.send_headers(stream_id, [(i.encode(), j.encode()) for i, j in headers])
+                conn.transmit()
+        return reader, StreamWriter()
+    def get_protocol(self, server_side=False, handler=None):
+        import aioquic.asyncio, aioquic.quic.events, aioquic.h3.connection, aioquic.h3.events
+        class Protocol(aioquic.asyncio.QuicConnectionProtocol):
+            def __init__(s, *args, **kw):
+                super().__init__(*args, **kw)
+                s.http = aioquic.h3.connection.H3Connection(s._quic)
+                s.streams = {}
+            def quic_event_received(s, event):
+                if not server_side:
+                    if isinstance(event, aioquic.quic.events.HandshakeCompleted):
+                        self.handshake.set_result(s)
+                    elif isinstance(event, aioquic.quic.events.ConnectionTerminated):
+                        self.handshake = None
+                        self.quic_egress_acm = None
+                if s.http is not None:
+                    for http_event in s.http.handle_event(event):
+                        s.http_event_received(http_event)
+            def http_event_received(s, event):
+                if isinstance(event, aioquic.h3.events.HeadersReceived):
+                    if event.stream_id not in s.streams and server_side:
+                        reader, writer = s.create_stream(event.stream_id)
+                        writer.headers.set_result(event.headers)
+                        asyncio.ensure_future(handler(reader, writer))
+                elif isinstance(event, aioquic.h3.events.DataReceived) and event.stream_id in s.streams:
+                    reader, writer = s.streams[event.stream_id]
+                    if event.data:
+                        reader.feed_data(event.data)
+                    if event.stream_ended:
+                        reader.feed_eof()
+                    s.close_stream(event.stream_id)
+            def create_stream(s, stream_id=None):
+                if stream_id is None:
+                    stream_id = s._quic.get_next_available_stream_id(False)
+                    s._quic._get_or_create_stream_for_send(stream_id)
+                reader, writer = self.get_stream(s, stream_id)
+                s.streams[stream_id] = (reader, writer)
+                return reader, writer
+            def close_stream(s, stream_id):
+                if stream_id in s.streams:
+                    reader, writer = s.streams[stream_id]
+                    if reader.at_eof() and writer.is_closing():
+                        s.streams.pop(stream_id)
+        return Protocol
+    async def wait_h3_connection(self):
+        if self.handshake is not None:
+            if not self.handshake.done():
+                await self.handshake
+        else:
+            import aioquic.asyncio
+            self.handshake = asyncio.get_event_loop().create_future()
+            self.quic_egress_acm = aioquic.asyncio.connect(self.host_name, self.port, create_protocol=self.get_protocol(), configuration=self.quicclient)
+            conn = await self.quic_egress_acm.__aenter__()
+            await self.handshake
+    async def wait_open_connection(self, *args):
+        await self.wait_h3_connection()
+        return self.handshake.result().create_stream()
+    def start_server(self, args, stream_handler=stream_handler):
+        import aioquic.asyncio
+        return aioquic.asyncio.serve(self.host_name, self.port, configuration=self.quicserver, create_protocol=self.get_protocol(True, functools.partial(stream_handler, **vars(self), **args)))
+
 class ProxySSH(ProxySimple):
     def __init__(self, **kw):
         super().__init__(**kw)
@@ -670,6 +757,7 @@ def proxy_by_uri(uri, jump):
     url = urllib.parse.urlparse('s://'+uri)
     rawprotos = [i.lower() for i in scheme.split('+')]
     err_str, protos = proto.get_protos(rawprotos)
+    protonames = [i.name for i in protos]
     if err_str:
         raise argparse.ArgumentTypeError(err_str)
     if 'ssl' in rawprotos or 'secure' in rawprotos:
@@ -683,7 +771,7 @@ def proxy_by_uri(uri, jump):
         sslcontexts.append(sslclient)
     else:
         sslserver = sslclient = None
-    if 'quic' in rawprotos:
+    if 'quic' in rawprotos or 'h3' in protonames:
         try:
             import ssl, aioquic.quic.configuration
         except Exception:
@@ -698,7 +786,6 @@ def proxy_by_uri(uri, jump):
             import h2
         except Exception:
             raise Exception('Missing library: "pip3 install h2"')
-    protonames = [i.name for i in protos]
     urlpath, _, plugins = url.path.partition(',')
     urlpath, _, lbind = urlpath.partition('@')
     plugins = plugins.split(',') if plugins else None
@@ -740,6 +827,8 @@ def proxy_by_uri(uri, jump):
                       host_name=host_name, port=port, unix=not loc, lbind=lbind, sslclient=sslclient, sslserver=sslserver)
         if 'quic' in rawprotos:
             proxy = ProxyQUIC(quicserver, quicclient, **params)
+        elif 'h3' in protonames:
+            proxy = ProxyH3(quicserver, quicclient, **params)
         elif 'h2' in protonames:
             proxy = ProxyH2(**params)
         elif 'ssh' in protonames:

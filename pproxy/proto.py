@@ -401,6 +401,9 @@ class H2(HTTP):
             headers.append(('proxy-authorization', 'Basic '+base64.b64encode(rauth)))
         writer_remote.send_headers(headers)
 
+class H3(H2):
+    pass
+
 class SSH(BaseProtocol):
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
         pass
@@ -564,7 +567,7 @@ def udp_accept(protos, data, **kw):
             return (proto,) + ret
     raise Exception(f'Unsupported protocol {data[:10]}')
 
-MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, ssh=SSH, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, ws=WS, trojan=Trojan, h2=H2, ssl='', secure='', quic='')
+MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, ssh=SSH, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, ws=WS, trojan=Trojan, h2=H2, h3=H3, ssl='', secure='', quic='')
 MAPPINGS['in'] = ''
 
 def get_protos(rawprotos):
