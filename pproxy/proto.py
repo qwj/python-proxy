@@ -295,7 +295,7 @@ class HTTP(BaseProtocol):
                 writer.write(body)
             if wait:
                 await writer.drain()
-        return await self.http_accept(user, method, path, None, ver, lines, headers['Host'], headers.get('Proxy-Authorization'), reply, **kw)
+        return await self.http_accept(user, method, path, None, ver, lines, headers.get('Host', ''), headers.get('Proxy-Authorization'), reply, **kw)
     async def http_accept(self, user, method, path, authority, ver, lines, host, pauth, reply, authtable, users, httpget, **kw):
         url = urllib.parse.urlparse(path)
         if method == 'GET' and not url.hostname:
