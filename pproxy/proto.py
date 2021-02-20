@@ -283,43 +283,51 @@ class HTTP(BaseProtocol):
         header = await reader.read_w(4)
         reader.rollback(header)
         return header in (b'GET ', b'HEAD', b'POST', b'PUT ', b'DELE', b'CONN', b'OPTI', b'TRAC', b'PATC')
-    async def accept(self, reader, user, writer, users, authtable, httpget=None, **kw):
+    async def accept(self, reader, user, writer, **kw):
         lines = await reader.read_until(b'\r\n\r\n')
         headers = lines[:-4].decode().split('\r\n')
         method, path, ver = HTTP_LINE.match(headers.pop(0)).groups()
         lines = '\r\n'.join(i for i in headers if not i.startswith('Proxy-'))
         headers = dict(i.split(': ', 1) for i in headers if ': ' in i)
+        async def reply(code, message, body=None, wait=False):
+            writer.write(message)
+            if body:
+                writer.write(body)
+            if wait:
+                await writer.drain()
+        return await self.http_accept(user, method, path, None, ver, lines, headers['Host'], headers.get('Proxy-Authorization'), reply, **kw)
+    async def http_accept(self, user, method, path, authority, ver, lines, host, pauth, reply, authtable, users, httpget, **kw):
         url = urllib.parse.urlparse(path)
-        if method == 'GET' and not url.hostname and httpget:
-            for path, text in httpget.items():
+        if method == 'GET' and not url.hostname:
+            for path, text in (httpget.items() if httpget else ()):
                 if path == url.path:
                     user = next(filter(lambda x: x.decode()==url.query, users), None) if users else True
                     if user:
                         if users:
                             authtable.set_authed(user)
                         if type(text) is str:
-                            text = (text % dict(host=headers["Host"])).encode()
-                        writer.write(f'{ver} 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\nCache-Control: max-age=900\r\nContent-Length: {len(text)}\r\n\r\n'.encode() + text)
-                        await writer.drain()
+                            text = (text % dict(host=host)).encode()
+                        await reply(200, f'{ver} 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\nCache-Control: max-age=900\r\nContent-Length: {len(text)}\r\n\r\n'.encode(), text, True)
                         raise Exception('Connection closed')
             raise Exception(f'404 {method} {url.path}')
         if users:
-            pauth = headers.get('Proxy-Authorization', None)
             user = authtable.authed()
             if not user:
                 user = next(filter(lambda i: ('Basic '+base64.b64encode(i).decode()) == pauth, users), None)
                 if user is None:
-                    writer.write(f'{ver} 407 Proxy Authentication Required\r\nConnection: close\r\nProxy-Authenticate: Basic realm="simple"\r\n\r\n'.encode())
+                    await reply(407, f'{ver} 407 Proxy Authentication Required\r\nConnection: close\r\nProxy-Authenticate: Basic realm="simple"\r\n\r\n'.encode(), wait=True)
                     raise Exception('Unauthorized HTTP')
             authtable.set_authed(user)
         if method == 'CONNECT':
-            host_name, port = netloc_split(path)
-            return user, host_name, port, f'{ver} 200 OK\r\nConnection: close\r\n\r\n'.encode()
+            host_name, port = netloc_split(authority or path)
+            return user, host_name, port, lambda writer: reply(200, f'{ver} 200 OK\r\nConnection: close\r\n\r\n'.encode())
         else:
-            url = urllib.parse.urlparse(path)
-            host_name, port = netloc_split(url.netloc or headers.get("Host"), default_port=80)
+            host_name, port = netloc_split(url.netloc or host, default_port=80)
             newpath = url._replace(netloc='', scheme='').geturl()
-            return user, host_name, port, b'', f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode()
+            async def connected(writer):
+                writer.write(f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode())
+                return True
+            return user, host_name, port, connected
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
         writer_remote.write(f'CONNECT {host_name}:{port} HTTP/1.1\r\nHost: {myhost}'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
         await reader_remote.read_until(b'\r\n\r\n')
@@ -369,6 +377,29 @@ class HTTPOnly(HTTP):
                 buffer.clear()
                 return o(data)
         writer_remote.write = write
+
+class H2(HTTP):
+    async def guess(self, reader, **kw):
+        return True
+    async def accept(self, reader, user, writer, **kw):
+        if not writer.headers.done():
+            await writer.headers
+        headers = writer.headers.result()
+        headers = {i.decode().lower():j.decode() for i,j in headers}
+        lines = '\r\n'.join(i for i in headers if not i.startswith('proxy-') and not i.startswith(':'))
+        async def reply(code, message, body=None, wait=False):
+            writer.send_headers(((':status', str(code)),))
+            if body:
+                writer.write(body)
+            if wait:
+                await writer.drain()
+        return await self.http_accept(user, headers[':method'], headers[':path'], headers[':authority'], '2.0', lines, '', headers.get('proxy-authorization'), reply, **kw)
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
+        headers = [(':method', 'CONNECT'), (':scheme', 'https'), (':path', '/'),
+                   (':authority', f'{host_name}:{port}')]
+        if rauth:
+            headers.append(('proxy-authorization', 'Basic '+base64.b64encode(rauth)))
+        writer_remote.send_headers(headers)
 
 class SSH(BaseProtocol):
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
@@ -521,8 +552,8 @@ async def accept(protos, reader, **kw):
             raise Exception('Connection closed')
         if user:
             ret = await proto.accept(reader, user, **kw)
-            while len(ret) < 5:
-                ret += (b'',)
+            while len(ret) < 4:
+                ret += (None,)
             return (proto,) + ret
     raise Exception(f'Unsupported protocol')
 
@@ -533,7 +564,7 @@ def udp_accept(protos, data, **kw):
             return (proto,) + ret
     raise Exception(f'Unsupported protocol {data[:10]}')
 
-MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, ssh=SSH, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, ws=WS, trojan=Trojan, ssl='', secure='', quic='')
+MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, ssh=SSH, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, ws=WS, trojan=Trojan, h2=H2, ssl='', secure='', quic='')
 MAPPINGS['in'] = ''
 
 def get_protos(rawprotos):
@@ -553,7 +584,7 @@ def get_protos(rawprotos):
 def sslwrap(reader, writer, sslcontext, server_side=False, server_hostname=None, verbose=None):
     if sslcontext is None:
         return reader, writer
-    ssl_reader = type(reader)()
+    ssl_reader = asyncio.StreamReader()
     class Protocol(asyncio.Protocol):
         def data_received(self, data):
             ssl_reader.feed_data(data)
@@ -576,13 +607,14 @@ def sslwrap(reader, writer, sslcontext, server_side=False, server_hostname=None,
         def _force_close(self, exc):
             if not self.closed:
                 (verbose or print)(f'{exc} from {writer.get_extra_info("peername")[0]}')
+            ssl._app_transport._closed = True
             self.close()
         def abort(self):
             self.close()
     ssl.connection_made(Transport())
     async def channel():
         try:
-            while not reader.at_eof() and not ssl._app_transport.closed:
+            while not reader.at_eof() and not ssl._app_transport._closed:
                 data = await reader.read(65536)
                 if not data:
                     break
@@ -600,7 +632,8 @@ def sslwrap(reader, writer, sslcontext, server_side=False, server_hostname=None,
         def drain(self):
             return writer.drain()
         def is_closing(self):
-            return ssl._app_transport.closed
+            return ssl._app_transport._closed
         def close(self):
-            ssl._app_transport.close()
+            if not ssl._app_transport._closed:
+                ssl._app_transport.close()
     return ssl_reader, Writer()
