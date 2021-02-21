@@ -776,8 +776,8 @@ def proxy_by_uri(uri, jump):
             import ssl, aioquic.quic.configuration
         except Exception:
             raise Exception('Missing library: "pip3 install aioquic"')
-        quicserver = aioquic.quic.configuration.QuicConfiguration(is_client=False)
-        quicclient = aioquic.quic.configuration.QuicConfiguration()
+        quicserver = aioquic.quic.configuration.QuicConfiguration(is_client=False, max_stream_data=2**30, max_data=2**30)
+        quicclient = aioquic.quic.configuration.QuicConfiguration(max_stream_data=2**30, max_data=2**30)
         quicclient.verify_mode = ssl.CERT_NONE
         sslcontexts.append(quicserver)
         sslcontexts.append(quicclient)
