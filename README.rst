@@ -1,7 +1,7 @@
 python-proxy
 ============
 
-|made-with-python| |PyPI-version| |Hit-Count| |Downloads|
+|made-with-python| |PyPI-version| |Hit-Count| |Downloads| |Downloads(month)| |Downloads(week)|
 
 .. |made-with-python| image:: https://img.shields.io/badge/Made%20with-Python-1f425f.svg
    :target: https://www.python.org/
@@ -10,6 +10,10 @@ python-proxy
 .. |Hit-Count| image:: http://hits.dwyl.io/qwj/python-proxy.svg
    :target: https://pypi.python.org/pypi/pproxy/
 .. |Downloads| image:: https://pepy.tech/badge/pproxy
+   :target: https://pepy.tech/project/pproxy
+.. |Downloads(month)| image:: https://pepy.tech/badge/pproxy/month)
+   :target: https://pepy.tech/project/pproxy
+.. |Downloads(week)| image:: https://pepy.tech/badge/pproxy/week)
    :target: https://pepy.tech/project/pproxy
 
 HTTP/HTTP2/HTTP3/Socks4/Socks5/Shadowsocks/SSH/Redirect/Pf/QUIC TCP/UDP asynchronous tunnel proxy implemented in Python3 asyncio.
@@ -101,7 +105,7 @@ Protocols
 +-------------------+------------+------------+------------+------------+--------------+
 | http v2 (connect) | ✔          | ✔          |            |            | h2://        |
 +-------------------+------------+------------+------------+------------+--------------+
-| http v3 (connect) | ✔          | ✔          |            |            | h3://        |
+| http v3 (connect) | ✔ by UDP   | ✔ by UDP   |            |            | h3://        |
 +-------------------+------------+------------+------------+------------+--------------+
 | https             | ✔          | ✔          |            |            | http+ssl://  |
 +-------------------+------------+------------+------------+------------+--------------+
@@ -121,7 +125,7 @@ Protocols
 +-------------------+------------+------------+------------+------------+--------------+
 | ssh tunnel        |            | ✔          |            |            | ssh://       |
 +-------------------+------------+------------+------------+------------+--------------+
-| quic              | ✔          | ✔          | ✔          | ✔          | http+quic:// |
+| quic              | ✔ by UDP   | ✔ by UDP   | ✔          | ✔          | http+quic:// |
 +-------------------+------------+------------+------------+------------+--------------+
 | iptables nat      | ✔          |            |            |            | redir://     |
 +-------------------+------------+------------+------------+------------+--------------+
@@ -722,16 +726,17 @@ Examples
 
 - QUIC protocol example
 
-  QUIC is a UDP stream protocol in HTTP/3. Library **aioquic** is required if you want to proxy via QUIC.
+  QUIC is a UDP stream protocol used in HTTP/3. Library **aioquic** is required if you want to proxy via QUIC.
+  QUIC is listened on UDP port, but can handle TCP or UDP traffic. If you want to handle TCP traffic, you should use "-l quic+http" instead of "-ul quic+http".
 
   .. code:: rst
 
     $ pip3 install aioquic
-    $ pproxy --ssl ssl.crt,ssl.key -l quic://:1234
+    $ pproxy --ssl ssl.crt,ssl.key -l quic+http://:1234
 
   On the client:
 
-    $ pproxy -r quic://server:1234
+    $ pproxy -r quic+http://server:1234
 
   QUIC protocol can transfer a lot of TCP streams on one single UDP stream. If the connection number is hugh, QUIC can benefit by reducing TCP handshake time.
 
