@@ -1,7 +1,7 @@
 python-proxy
 ============
 
-|made-with-python| |PyPI-version| |Hit-Count| |Downloads| |Downloads(month)| |Downloads(week)|
+|made-with-python| |PyPI-version| |Hit-Count| |Downloads| |Downloads-month| |Downloads-week|
 
 .. |made-with-python| image:: https://img.shields.io/badge/Made%20with-Python-1f425f.svg
    :target: https://www.python.org/
@@ -11,9 +11,9 @@ python-proxy
    :target: https://pypi.python.org/pypi/pproxy/
 .. |Downloads| image:: https://pepy.tech/badge/pproxy
    :target: https://pepy.tech/project/pproxy
-.. |Downloads(month)| image:: https://pepy.tech/badge/pproxy/month)
+.. |Downloads-month| image:: https://pepy.tech/badge/pproxy/month)
    :target: https://pepy.tech/project/pproxy
-.. |Downloads(week)| image:: https://pepy.tech/badge/pproxy/week)
+.. |Downloads-week| image:: https://pepy.tech/badge/pproxy/week)
    :target: https://pepy.tech/project/pproxy
 
 HTTP/HTTP2/HTTP3/Socks4/Socks5/Shadowsocks/SSH/Redirect/Pf/QUIC TCP/UDP asynchronous tunnel proxy implemented in Python3 asyncio.
