@@ -43,6 +43,7 @@ class AEADCipher(BaseCipher):
         self._buffer = bytearray()
         self._declen = None
         self.setup()
+        return self
     @property
     def nonce(self):
         ret = self._nonce.to_bytes(self.NONCE_LENGTH, 'little')
