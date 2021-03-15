@@ -874,7 +874,7 @@ async def test_url(url, rserver):
         print(body.decode('utf8', 'ignore'))
     print(f'============ success ============')
 
-def main():
+def main(args = None):
     parser = argparse.ArgumentParser(description=__description__+'\nSupported protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect,pf,tunnel', epilog=f'Online help: <{__url__}>')
     parser.add_argument('-l', dest='listen', default=[], action='append', type=proxies_by_uri, help='tcp server uri (default: http+socks4+socks5://:8080/)')
     parser.add_argument('-r', dest='rserver', default=[], action='append', type=proxies_by_uri, help='tcp remote server uri (default: direct)')
@@ -894,7 +894,7 @@ def main():
     parser.add_argument('--daemon', dest='daemon', action='store_true', help='run as a daemon (Linux only)')
     parser.add_argument('--test', help='test this url for all remote proxies and exit')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
-    args = parser.parse_args()
+    args = parser.parse_args(args)
     if args.sslfile:
         sslfile = args.sslfile.split(',')
         for context in sslcontexts:
