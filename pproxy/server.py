@@ -268,7 +268,7 @@ class ProxySimple(ProxyDirect):
         return self.users[0] if self.users else b''
     def udp_packet_unpack(self, data):
         data = self.cipher.datagram.decrypt(data) if self.cipher else data
-        return self.rproto.udp_unpack(data)
+        return self.jump.udp_packet_unpack(self.rproto.udp_unpack(data))
     def destination(self, host, port):
         return self.host_name, self.port
     def udp_prepare_connection(self, host, port, data):
