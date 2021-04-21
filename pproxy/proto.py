@@ -320,7 +320,7 @@ class HTTP(BaseProtocol):
             authtable.set_authed(user)
         if method == 'CONNECT':
             host_name, port = netloc_split(authority or path)
-            return user, host_name, port, lambda writer: reply(200, f'{ver} 200 Connection Established\r\nConnection: close\r\n\r\n'.encode())
+            return user, host_name, port, lambda writer: reply(200, f'{ver} 200 Connection established\r\nConnection: close\r\n\r\n'.encode())
         else:
             host_name, port = netloc_split(url.netloc or host, default_port=80)
             newpath = url._replace(netloc='', scheme='').geturl()
