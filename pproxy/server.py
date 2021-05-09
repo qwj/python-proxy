@@ -615,7 +615,7 @@ class ProxySSH(ProxySimple):
         writer.get_extra_info = dict(peername=remote_addr, sockname=remote_addr).get
         return reader, writer
     async def wait_ssh_connection(self, local_addr=None, family=0, tunnel=None):
-        if self.sshconn is not None:
+        if self.sshconn is not None and not self.sshconn.cancelled():
             if not self.sshconn.done():
                 await self.sshconn
         else:
@@ -633,18 +633,24 @@ class ProxySSH(ProxySimple):
             conn = await asyncssh.connect(host=self.host_name, port=self.port, local_addr=local_addr, family=family, x509_trusted_certs=None, known_hosts=None, username=username, password=password, client_keys=client_keys, keepalive_interval=60, tunnel=tunnel)
             self.sshconn.set_result(conn)
     async def wait_open_connection(self, host, port, local_addr, family, tunnel=None):
-        await self.wait_ssh_connection(local_addr, family, tunnel)
-        conn = self.sshconn.result()
-        if isinstance(self.jump, ProxySSH):
-            reader, writer = await self.jump.wait_open_connection(host, port, None, None, conn)
-        else:
-            host, port = self.jump.destination(host, port)
-            if self.jump.unix:
-                reader, writer = await conn.open_unix_connection(self.jump.bind)
+        try:
+            await self.wait_ssh_connection(local_addr, family, tunnel)
+            conn = self.sshconn.result()
+            if isinstance(self.jump, ProxySSH):
+                reader, writer = await self.jump.wait_open_connection(host, port, None, None, conn)
             else:
-                reader, writer = await conn.open_connection(host, port)
-            reader, writer = self.patch_stream(reader, writer, host, port)
-        return reader, writer
+                host, port = self.jump.destination(host, port)
+                if self.jump.unix:
+                    reader, writer = await conn.open_unix_connection(self.jump.bind)
+                else:
+                    reader, writer = await conn.open_connection(host, port)
+                reader, writer = self.patch_stream(reader, writer, host, port)
+            return reader, writer
+        except Exception as ex:
+            if not self.sshconn.done():
+                self.sshconn.set_exception(ex)
+            self.sshconn = None
+            raise
     async def start_server(self, args, stream_handler=stream_handler, tunnel=None):
         if type(self.jump) is ProxyDirect:
             raise Exception('ssh server mode unsupported')
