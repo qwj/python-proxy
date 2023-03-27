@@ -616,12 +616,21 @@ def sslwrap(reader, writer, sslcontext, server_side=False, server_hostname=None,
             self.close()
     ssl.connection_made(Transport())
     async def channel():
+        read_size=65536
+        buffer=None
+        if hasattr(ssl,'get_buffer'):
+            buffer=ssl.get_buffer(read_size)
         try:
             while not reader.at_eof() and not ssl._app_transport._closed:
-                data = await reader.read(65536)
+                data = await reader.read(read_size)
                 if not data:
                     break
-                ssl.data_received(data)
+                if buffer!=None:
+                    data_len=len(data)
+                    buffer[:data_len]=data
+                    ssl.buffer_updated(data_len)
+                else:
+                    ssl.data_received(data)
         except Exception:
             pass
         finally:
