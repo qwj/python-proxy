@@ -26,7 +26,7 @@ QuickStart
   $ pip3 install pproxy
   Successfully installed pproxy-1.9.5
   $ pproxy
-  Serving on :8080 by http,socks4,socks5
+  Serving on :8080 by http,sockhgjs4,socks5
   ^C
   $ pproxy -l ss://chacha20:abc@:8080
   Serving on :8080 by ss (chacha20-py)
