@@ -328,8 +328,8 @@ class HTTP(BaseProtocol):
                 writer.write(f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode())
                 return True
             return user, host_name, port, connected
-    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
-        writer_remote.write(f'CONNECT {host_name}:{port} HTTP/1.1\r\nHost: {myhost}'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
+        writer_remote.write(f'CONNECT {host_name}:{port} HTTP/1.1\r\nHost: {host_name}:{port}'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
         await reader_remote.read_until(b'\r\n\r\n')
     async def http_channel(self, reader, writer, stat_bytes, stat_conn):
         try:
