@@ -328,8 +328,8 @@ class HTTP(BaseProtocol):
                 writer.write(f'{method} {newpath} {ver}\r\n{lines}\r\n\r\n'.encode())
                 return True
             return user, host_name, port, connected
-    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
-        writer_remote.write(f'CONNECT {host_name}:{port} HTTP/1.1\r\nHost: {myhost}'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
+    async def connect(self, reader_remote, writer_remote, rauth, host_name, port, **kw):
+        writer_remote.write(f'CONNECT {host_name}:{port} HTTP/1.1\r\nHost: {host_name}:{port}'.encode() + (b'\r\nProxy-Authorization: Basic '+base64.b64encode(rauth) if rauth else b'') + b'\r\n\r\n')
         await reader_remote.read_until(b'\r\n\r\n')
     async def http_channel(self, reader, writer, stat_bytes, stat_conn):
         try:
@@ -616,12 +616,21 @@ def sslwrap(reader, writer, sslcontext, server_side=False, server_hostname=None,
             self.close()
     ssl.connection_made(Transport())
     async def channel():
+        read_size=65536
+        buffer=None
+        if hasattr(ssl,'get_buffer'):
+            buffer=ssl.get_buffer(read_size)
         try:
             while not reader.at_eof() and not ssl._app_transport._closed:
-                data = await reader.read(65536)
+                data = await reader.read(read_size)
                 if not data:
                     break
-                ssl.data_received(data)
+                if buffer!=None:
+                    data_len=len(data)
+                    buffer[:data_len]=data
+                    ssl.buffer_updated(data_len)
+                else:
+                    ssl.data_received(data)
         except Exception:
             pass
         finally:

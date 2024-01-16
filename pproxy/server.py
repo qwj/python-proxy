@@ -880,6 +880,17 @@ async def test_url(url, rserver):
         print(body.decode('utf8', 'ignore'))
     print(f'============ success ============')
 
+def print_server_started(option, server, print_fn):
+    for s in server.sockets:
+        # https://github.com/MagicStack/uvloop/blob/master/uvloop/pseudosock.pyx
+        laddr = s.getsockname() # tuple size varies with protocol family
+        h = laddr[0]
+        p = laddr[1]
+        f = str(s.family)
+        ipversion = "ipv4" if f == "AddressFamily.AF_INET" else ("ipv6" if f == "AddressFamily.AF_INET6" else "ipv?") # TODO better
+        bind = ipversion+' '+h+':'+str(p)
+        print_fn(option, bind)
+
 def main(args = None):
     parser = argparse.ArgumentParser(description=__description__+'\nSupported protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect,pf,tunnel', epilog=f'Online help: <{__url__}>')
     parser.add_argument('-l', dest='listen', default=[], action='append', type=proxies_by_uri, help='tcp server uri (default: http+socks4+socks5://:8080/)')
@@ -942,27 +953,36 @@ def main(args = None):
         from . import verbose
         verbose.setup(loop, args)
     servers = []
+    def print_fn(option, bind=None):
+        print('Serving on', (bind or option.bind), 'by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
     for option in args.listen:
-        print('Serving on', option.bind, 'by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
         try:
             server = loop.run_until_complete(option.start_server(vars(args)))
+            print_server_started(option, server, print_fn)
             servers.append(server)
         except Exception as ex:
+            print_fn(option)
             print('Start server failed.\n\t==>', ex)
+    def print_fn(option, bind=None):
+        print('Serving on UDP', (bind or option.bind), 'by', ",".join(i.name for i in option.protos), f'({option.cipher.name})' if option.cipher else '')
     for option in args.ulisten:
-        print('Serving on UDP', option.bind, 'by', ",".join(i.name for i in option.protos), f'({option.cipher.name})' if option.cipher else '')
         try:
             server, protocol = loop.run_until_complete(option.udp_start_server(vars(args)))
+            print_server_started(option, server, print_fn)
             servers.append(server)
         except Exception as ex:
+            print_fn(option)
             print('Start server failed.\n\t==>', ex)
+    def print_fn(option, bind=None):
+        print('Serving on', (bind or option.bind), 'backward by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
     for option in args.rserver:
         if isinstance(option, ProxyBackward):
-            print('Serving on', option.bind, 'backward by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
             try:
                 server = loop.run_until_complete(option.start_backward_client(vars(args)))
+                print_server_started(option, server, print_fn)
                 servers.append(server)
             except Exception as ex:
+                print_fn(option)
                 print('Start server failed.\n\t==>', ex)
     if servers:
         if args.sys:
