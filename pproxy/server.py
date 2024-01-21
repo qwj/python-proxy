@@ -1,5 +1,7 @@
-import argparse, time, re, asyncio, functools, base64, random, urllib.parse, socket
+import argparse, time, re, asyncio, functools, base64, random, urllib.parse, socket, sys
 from . import proto
+from . import admin
+
 from .__doc__ import *
 
 SOCKET_TIMEOUT = 60
@@ -892,6 +894,8 @@ def print_server_started(option, server, print_fn):
         print_fn(option, bind)
 
 def main(args = None):
+    origin_argv = sys.argv[1:] if args is None else args
+
     parser = argparse.ArgumentParser(description=__description__+'\nSupported protocols: http,socks4,socks5,shadowsocks,shadowsocksr,redirect,pf,tunnel', epilog=f'Online help: <{__url__}>')
     parser.add_argument('-l', dest='listen', default=[], action='append', type=proxies_by_uri, help='tcp server uri (default: http+socks4+socks5://:8080/)')
     parser.add_argument('-r', dest='rserver', default=[], action='append', type=proxies_by_uri, help='tcp remote server uri (default: direct)')
@@ -953,6 +957,7 @@ def main(args = None):
         from . import verbose
         verbose.setup(loop, args)
     servers = []
+    admin.config.update({'argv': origin_argv, 'servers': servers, 'args': args, 'loop': loop})
     def print_fn(option, bind=None):
         print('Serving on', (bind or option.bind), 'by', ",".join(i.name for i in option.protos) + ('(SSL)' if option.sslclient else ''), '({}{})'.format(option.cipher.name, ' '+','.join(i.name() for i in option.cipher.plugins) if option.cipher and option.cipher.plugins else '') if option.cipher else '')
     for option in args.listen:
@@ -1004,6 +1009,9 @@ def main(args = None):
         if hasattr(server, 'wait_closed'):
             loop.run_until_complete(server.wait_closed())
     loop.run_until_complete(loop.shutdown_asyncgens())
+    if admin.config.get('reload', False):
+        admin.config['reload'] = False
+        main(admin.config['argv'])
     loop.close()
 
 if __name__ == '__main__':

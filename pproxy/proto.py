@@ -1,5 +1,5 @@
 import asyncio, socket, urllib.parse, time, re, base64, hmac, struct, hashlib, io, os
-
+from . import admin
 HTTP_LINE = re.compile('([^ ]+) +(.+?) +(HTTP/[^ ]+)$')
 packstr = lambda s, n=1: len(s).to_bytes(n, 'big') + s
 
@@ -404,6 +404,38 @@ class H2(HTTP):
 class H3(H2):
     pass
 
+
+class HTTPAdmin(HTTP):
+    async def accept(self, reader, user, writer, **kw):
+        lines = await reader.read_until(b'\r\n\r\n')
+        headers = lines[:-4].decode().split('\r\n')
+        method, path, ver = HTTP_LINE.match(headers.pop(0)).groups()
+        lines = '\r\n'.join(i for i in headers if not i.startswith('Proxy-'))
+        headers = dict(i.split(': ', 1) for i in headers if ': ' in i)
+        async def reply(code, message, body=None, wait=False):
+            writer.write(message)
+            if body:
+                writer.write(body)
+            if wait:
+                await writer.drain()
+
+        content_length = int(headers.get('Content-Length','0'))
+        content = ''
+        if content_length > 0:
+            content = await reader.read_n(content_length)
+
+        url = urllib.parse.urlparse(path)
+        if url.hostname is not None:
+            raise Exception(f'HTTP Admin Unsupported hostname')
+        if method in ["GET", "POST", "PUT", "PATCH", "DELETE"]:
+            for path, handler in admin.httpget.items():
+                if path == url.path:
+                    await handler(reply=reply, ver=ver, method=method, headers=headers, lines=lines, content=content)
+                    raise Exception('Connection closed')
+            raise Exception(f'404 {method} {url.path}')
+        raise Exception(f'405 {method} not allowed')
+        
+
 class SSH(BaseProtocol):
     async def connect(self, reader_remote, writer_remote, rauth, host_name, port, myhost, **kw):
         pass
@@ -567,7 +599,7 @@ def udp_accept(protos, data, **kw):
             return (proto,) + ret
     raise Exception(f'Unsupported protocol {data[:10]}')
 
-MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, ssh=SSH, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, ws=WS, trojan=Trojan, h2=H2, h3=H3, ssl='', secure='', quic='')
+MAPPINGS = dict(direct=Direct, http=HTTP, httponly=HTTPOnly, httpadmin=HTTPAdmin, ssh=SSH, socks5=Socks5, socks4=Socks4, socks=Socks5, ss=SS, ssr=SSR, redir=Redir, pf=Pf, tunnel=Tunnel, echo=Echo, ws=WS, trojan=Trojan, h2=H2, h3=H3, ssl='', secure='', quic='')
 MAPPINGS['in'] = ''
 
 def get_protos(rawprotos):
