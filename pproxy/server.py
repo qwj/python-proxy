@@ -1,7 +1,6 @@
-import argparse, time, re, asyncio, functools, base64, random, urllib.parse, socket
+import argparse, time, re, asyncio, functools, base64, random, urllib.parse, socket, os
 from . import proto
 from .__doc__ import *
-
 SOCKET_TIMEOUT = 60
 UDP_LIMIT = 30
 DUMMY = lambda s: s
@@ -23,6 +22,8 @@ class AuthTable(object):
         self.remote_ip = remote_ip
         self.authtime = authtime
     def authed(self):
+        if os.environ.get("OK_REMOTE_IPS") and self.remote_ip not in os.environ.get("OK_REMOTE_IPS", ""):
+            raise ValueError("Not allowed")
         if time.time() - self._auth.get(self.remote_ip, 0) <= self.authtime:
             return self._user[self.remote_ip]
     def set_authed(self, user):
