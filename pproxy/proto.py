@@ -4,7 +4,7 @@ HTTP_LINE = re.compile('([^ ]+) +(.+?) +(HTTP/[^ ]+)$')
 packstr = lambda s, n=1: len(s).to_bytes(n, 'big') + s
 
 def netloc_split(loc, default_host=None, default_port=None):
-    ipv6 = re.fullmatch('\[([0-9a-fA-F:]*)\](?::(\d+)?)?', loc)
+    ipv6 = re.fullmatch(r'\[([0-9a-fA-F:]*)\](?::(\d+)?)?', loc)
     if ipv6:
         host_name, port = ipv6.groups()
     elif ':' in loc:
