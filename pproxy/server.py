@@ -272,7 +272,7 @@ class ProxySimple(ProxyDirect):
         data = self.cipher.datagram.decrypt(data) if self.cipher else data
         return self.jump.udp_packet_unpack(self.rproto.udp_unpack(data))
     def destination(self, host, port):
-        return self.host_name, self.port
+        return self.host_name, self.port if self.port != 0 else port
     def udp_prepare_connection(self, host, port, data):
         data = self.jump.udp_prepare_connection(host, port, data)
         whost, wport = self.jump.destination(host, port)
@@ -291,7 +291,7 @@ class ProxySimple(ProxyDirect):
         if self.unix:
             return asyncio.open_unix_connection(path=self.bind)
         else:
-            return asyncio.open_connection(host=self.host_name, port=self.port, local_addr=local_addr, family=family)
+            return asyncio.open_connection(host=self.host_name, port=self.port if self.port != 0 else port, local_addr=local_addr, family=family)
     async def prepare_connection(self, reader_remote, writer_remote, host, port):
         reader_remote, writer_remote = proto.sslwrap(reader_remote, writer_remote, self.sslclient, False, self.host_name)
         _, writer_cipher_r = await prepare_ciphers(self.cipher, reader_remote, writer_remote, self.bind)
