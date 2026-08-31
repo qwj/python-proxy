@@ -952,7 +952,8 @@ def main(args = None):
         print('Using uvloop')
     except ModuleNotFoundError:
         pass
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     if args.v:
         from . import verbose
         verbose.setup(loop, args)
