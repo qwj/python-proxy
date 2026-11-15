@@ -687,6 +687,7 @@ class ProxyBackward(ProxySimple):
             reader, writer = await self.conn.get()
             if not reader.at_eof() and not writer.is_closing():
                 return reader, writer
+            writer.close()
     def close(self):
         self.closed = True
         for writer in self.writers:
